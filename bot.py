@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
 API_KEY = os.environ.get("API_FOOTBALL_KEY")
+CHANNEL_ID_ENV = os.environ.get("CHANNEL_ID")  # ← fallback permanente
 CONFIG_FILE = "config.json"
 TZ = pytz.timezone("America/Caracas")  # UTC-4
 
@@ -47,6 +48,8 @@ LEAGUES = {
     541: ("🌎", "Recopa Sudamericana"),
 }
 
+# ─── Config helpers ────────────────────────────────────────────────────────────
+
 def load_config() -> dict:
     if os.path.exists(CONFIG_FILE):
         with open(CONFIG_FILE, "r") as f:
@@ -56,6 +59,17 @@ def load_config() -> dict:
 def save_config(data: dict) -> None:
     with open(CONFIG_FILE, "w") as f:
         json.dump(data, f)
+
+def get_channel_id() -> str | None:
+    """
+    Prioridad:
+    1. config.json  (guardado por /gfa)
+    2. Variable de entorno CHANNEL_ID  (fallback permanente en Render)
+    """
+    config = load_config()
+    return config.get("channel_id") or CHANNEL_ID_ENV
+
+# ─── API helpers ───────────────────────────────────────────────────────────────
 
 def get_today_utc4() -> str:
     return datetime.now(TZ).strftime("%Y-%m-%d")
@@ -83,6 +97,8 @@ def fetch_matches() -> dict:
             logger.error(f"Error fetching league {league_id} ({name}): {e}")
     return all_matches
 
+# ─── Formatter ─────────────────────────────────────────────────────────────────
+
 def format_message(all_matches: dict) -> str:
     if not all_matches:
         return "No hay partidos hoy en las ligas seleccionadas. ⚽️"
@@ -104,11 +120,12 @@ def format_message(all_matches: dict) -> str:
     lines.append("\n<i>⚽️ Suscríbete en t.me/iUniversoFootball</i>")
     return "\n".join(lines)
 
+# ─── Scheduler job ─────────────────────────────────────────────────────────────
+
 async def send_daily_matches(bot) -> None:
-    config = load_config()
-    channel_id = config.get("channel_id")
+    channel_id = get_channel_id()
     if not channel_id:
-        logger.warning("No hay canal configurado. Usa /gfa para configurarlo.")
+        logger.warning("No hay canal configurado. Usa /gfa o define CHANNEL_ID en Render.")
         return
     all_matches = fetch_matches()
     msg = format_message(all_matches)
@@ -117,6 +134,8 @@ async def send_daily_matches(bot) -> None:
         logger.info(f"✅ Partidos enviados a {channel_id}")
     except Exception as e:
         logger.error(f"Error al enviar mensaje: {e}")
+
+# ─── /gfa command ──────────────────────────────────────────────────────────────
 
 async def gfa_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     args = context.args
@@ -148,6 +167,8 @@ async def gfa_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
         parse_mode="HTML",
     )
 
+# ─── post_init ─────────────────────────────────────────────────────────────────
+
 async def post_init(application) -> None:
     scheduler = AsyncIOScheduler(timezone=TZ)
     scheduler.add_job(
@@ -159,6 +180,8 @@ async def post_init(application) -> None:
     )
     scheduler.start()
     logger.info("⏰ Scheduler iniciado — publicación diaria a las 00:00 UTC-4.")
+
+# ─── Entry point ───────────────────────────────────────────────────────────────
 
 def main() -> None:
     if not TOKEN:
