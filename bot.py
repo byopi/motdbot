@@ -5,7 +5,14 @@ import requests
 from datetime import datetime
 import pytz
 from telegram import Update
-from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+from telegram.ext import (
+    ApplicationBuilder,
+    CommandHandler,
+    MessageHandler,
+    ConversationHandler,
+    ContextTypes,
+    filters,
+)
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 logging.basicConfig(
@@ -19,6 +26,12 @@ API_KEY = os.environ.get("API_FOOTBALL_KEY")
 CHANNEL_ID_ENV = os.environ.get("CHANNEL_ID")  # fallback permanente en Render
 CONFIG_FILE = "config.json"
 TZ = pytz.timezone("America/Caracas")  # UTC-4
+
+GIF_URL = "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEhgjGA2lzs-pgUhRrGYImfMvrjRFkGnili3j9_rSSnll0F83NELGw0q3zqjJtPJ1Wcb7aPq5KS2wtfBnDZTre8V1swHgrJ1Ec_I-087cInEOsic_6sbaTqsEx0UGUlY97w8vh1zU5RzjsXNSfBXIlmTmDOWrdo4oE8nuxkxHSkP33y4Lard0BsQGvV3kGM/s600/doc_2026-03-04_19-31-59.gif"
+
+# Estados del ConversationHandler para /gfa
+ASK_PASSWORD, ASK_CHANNEL = range(2)
+GFA_PASSWORD = "gfa1234"
 
 LEAGUES = {
     78:  ("🇩🇪", "Bundesliga"),
@@ -61,11 +74,6 @@ def save_config(data: dict) -> None:
         json.dump(data, f)
 
 def get_channel_id() -> str | None:
-    """
-    Prioridad:
-    1. config.json  (guardado por /gfa)
-    2. Variable de entorno CHANNEL_ID  (fallback permanente en Render)
-    """
     config = load_config()
     return config.get("channel_id") or CHANNEL_ID_ENV
 
@@ -99,73 +107,193 @@ def fetch_matches() -> dict:
 
 # ─── Formatter ─────────────────────────────────────────────────────────────────
 
+def parse_local_time(utc_str: str):
+    """Devuelve (HH:MM, datetime local) desde un string ISO UTC."""
+    try:
+        dt_utc = datetime.fromisoformat(utc_str.replace("Z", "+00:00"))
+        dt_local = dt_utc.astimezone(TZ)
+        return dt_local.strftime("%H:%M"), dt_local
+    except Exception:
+        return "--:--", None
+
+
 def format_message(all_matches: dict) -> str:
     if not all_matches:
-        return "No hay partidos hoy en las ligas seleccionadas. ⚽️"
-    lines = ["<b>🍿 ¡PARTIDOS DE HOY! ⚽️</b>"]
+        return "🍿 ¡PARTIDOS DE HOY! ⚽️\n\nNo hay partidos hoy en las ligas seleccionadas."
+
+    lines = ["🍿 ¡PARTIDOS DE HOY! ⚽️"]
+
     for league_id, (flag, name, fixtures) in all_matches.items():
         round_name = fixtures[0]["league"].get("round", "")
-        lines.append(f"\n<b>{flag} | {name} - {round_name}</b>")
-        for match in fixtures:
-            home = match["teams"]["home"]["name"]
-            away = match["teams"]["away"]["name"]
-            utc_str = match["fixture"]["date"]
-            try:
-                dt_utc = datetime.fromisoformat(utc_str.replace("Z", "+00:00"))
-                dt_local = dt_utc.astimezone(TZ)
-                time_str = dt_local.strftime("%H:%M")
-            except Exception:
-                time_str = "--:--"
-            lines.append(f"{home} - {away} {time_str}")
-    lines.append("\n<i>⚽️ Suscríbete en t.me/iUniversoFootball</i>")
+
+        # Ordenar partidos por hora
+        def sort_key(m):
+            _, dt = parse_local_time(m["fixture"]["date"])
+            return dt if dt else datetime.max.replace(tzinfo=TZ)
+
+        fixtures_sorted = sorted(fixtures, key=sort_key)
+
+        # Agrupar por horario
+        groups: dict[str, list] = {}
+        for match in fixtures_sorted:
+            time_str, _ = parse_local_time(match["fixture"]["date"])
+            groups.setdefault(time_str, []).append(match)
+
+        # Cabecera de liga
+        lines.append("")
+        lines.append(f"{flag} | {name} - {round_name}")
+        lines.append("")
+
+        # Partidos agrupados por horario, con línea en blanco entre grupos distintos
+        time_slots = list(groups.keys())
+        for i, time_str in enumerate(time_slots):
+            for match in groups[time_str]:
+                home = match["teams"]["home"]["name"]
+                away = match["teams"]["away"]["name"]
+                lines.append(f"{home} - {away} {time_str}")
+            if i < len(time_slots) - 1:
+                lines.append("")
+
+    lines.append("")
+    lines.append("⚽️ Suscríbete en t.me/iUniversoFootball")
+
     return "\n".join(lines)
+
+# ─── Envío al canal (GIF + texto) ──────────────────────────────────────────────
+
+async def send_to_channel(bot, channel_id: str, text: str) -> None:
+    """Envía primero el GIF y luego el texto de partidos al canal."""
+    await bot.send_animation(
+        chat_id=channel_id,
+        animation=GIF_URL,
+    )
+    await bot.send_message(
+        chat_id=channel_id,
+        text=text,
+    )
 
 # ─── Scheduler job ─────────────────────────────────────────────────────────────
 
 async def send_daily_matches(bot) -> None:
     channel_id = get_channel_id()
     if not channel_id:
-        logger.warning("No hay canal configurado. Usa /gfa o define CHANNEL_ID en Render.")
+        logger.warning("No hay canal configurado.")
         return
     all_matches = fetch_matches()
     msg = format_message(all_matches)
     try:
-        await bot.send_message(chat_id=channel_id, text=msg, parse_mode="HTML")
+        await send_to_channel(bot, channel_id, msg)
         logger.info(f"✅ Partidos enviados a {channel_id}")
     except Exception as e:
         logger.error(f"Error al enviar mensaje: {e}")
 
-# ─── /gfa command ──────────────────────────────────────────────────────────────
+# ─── /start ────────────────────────────────────────────────────────────────────
 
-async def gfa_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    args = context.args
-    if len(args) != 2 or args[0] != "gfa1234":
+async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    name = update.effective_user.first_name or "crack"
+    await update.message.reply_text(
+        f"👋 ¡Hola, {name}!\n\n"
+        "Soy el bot de <b>iUniversoFootball</b> ⚽️\n"
+        "Me encargo de publicar automáticamente los partidos del día en el canal, "
+        "cada noche a las <b>00:00 (UTC-4)</b>.\n\n"
+        "📋 <b>Comandos disponibles:</b>\n"
+        "• /start — Muestra este mensaje\n"
+        "• /gfa — Vincula un canal al bot\n"
+        "• /test — Envía los partidos de hoy al canal configurado\n\n"
+        "<i>⚽️ Suscríbete en t.me/iUniversoFootball</i>",
+        parse_mode="HTML",
+    )
+
+# ─── /test ─────────────────────────────────────────────────────────────────────
+
+async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    channel_id = get_channel_id()
+    if not channel_id:
         await update.message.reply_text(
-            "❌ Uso incorrecto.\nFormato: <code>/gfa gfa1234 [ID_CANAL]</code>",
-            parse_mode="HTML",
+            "❌ No hay canal configurado todavía. Usa /gfa para vincularlo primero."
         )
         return
-    channel_id = args[1]
+
+    await update.message.reply_text("⏳ Buscando partidos de hoy...")
+    all_matches = fetch_matches()
+    msg = format_message(all_matches)
+
+    try:
+        await send_to_channel(context.bot, channel_id, msg)
+        await update.message.reply_text(
+            f"✅ Mensaje de prueba enviado al canal <code>{channel_id}</code>.",
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        await update.message.reply_text(
+            f"❌ No pude enviar el mensaje al canal.\n<code>{e}</code>",
+            parse_mode="HTML",
+        )
+
+# ─── /gfa — ConversationHandler ────────────────────────────────────────────────
+
+async def gfa_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text(
+        "🔐 <b>Vinculación de canal</b>\n\n"
+        "Ingresa la contraseña para continuar:",
+        parse_mode="HTML",
+    )
+    return ASK_PASSWORD
+
+
+async def gfa_check_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    password = update.message.text.strip()
+    if password != GFA_PASSWORD:
+        await update.message.reply_text(
+            "❌ Contraseña incorrecta. Operación cancelada."
+        )
+        return ConversationHandler.END
+
+    await update.message.reply_text(
+        "✅ Contraseña correcta.\n\n"
+        "Ahora envíame el <b>ID del canal</b> que quieres vincular.\n"
+        "Ejemplo: <code>-1001234567890</code>\n\n"
+        "<i>Asegúrate de que el bot sea administrador del canal.</i>",
+        parse_mode="HTML",
+    )
+    return ASK_CHANNEL
+
+
+async def gfa_save_channel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    channel_id = update.message.text.strip()
     user_id = update.effective_user.id
+
     try:
         member = await context.bot.get_chat_member(chat_id=channel_id, user_id=user_id)
         if member.status not in ("administrator", "creator"):
-            await update.message.reply_text("❌ No eres administrador de ese canal.")
-            return
+            await update.message.reply_text(
+                "❌ No eres administrador de ese canal. Operación cancelada."
+            )
+            return ConversationHandler.END
     except Exception as e:
         await update.message.reply_text(
-            f"❌ No pude verificar el canal.\n<code>{e}</code>",
+            f"❌ No pude verificar el canal. ¿Es correcto el ID?\n<code>{e}</code>",
             parse_mode="HTML",
         )
-        return
+        return ConversationHandler.END
+
     config = load_config()
     config["channel_id"] = channel_id
     save_config(config)
+
     await update.message.reply_text(
-        f"✅ Canal configurado: <code>{channel_id}</code>\n"
-        "Publicación diaria a las <b>00:00 (UTC-4)</b>.",
+        f"✅ ¡Canal vinculado correctamente!\n\n"
+        f"📢 Canal: <code>{channel_id}</code>\n"
+        f"🕛 Publicación diaria a las <b>00:00 (UTC-4)</b>.\n\n"
+        f"Usa /test para enviar un mensaje de prueba ahora mismo.",
         parse_mode="HTML",
     )
+    return ConversationHandler.END
+
+
+async def gfa_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text("❌ Operación cancelada.")
+    return ConversationHandler.END
 
 # ─── post_init ─────────────────────────────────────────────────────────────────
 
@@ -188,8 +316,22 @@ def main() -> None:
         raise ValueError("Falta TELEGRAM_TOKEN")
     if not API_KEY:
         raise ValueError("Falta API_FOOTBALL_KEY")
+
     app = ApplicationBuilder().token(TOKEN).post_init(post_init).build()
-    app.add_handler(CommandHandler("gfa", gfa_command))
+
+    gfa_handler = ConversationHandler(
+        entry_points=[CommandHandler("gfa", gfa_start)],
+        states={
+            ASK_PASSWORD: [MessageHandler(filters.TEXT & ~filters.COMMAND, gfa_check_password)],
+            ASK_CHANNEL:  [MessageHandler(filters.TEXT & ~filters.COMMAND, gfa_save_channel)],
+        },
+        fallbacks=[CommandHandler("cancel", gfa_cancel)],
+    )
+
+    app.add_handler(CommandHandler("start", start_command))
+    app.add_handler(CommandHandler("test", test_command))
+    app.add_handler(gfa_handler)
+
     logger.info("🤖 Bot iniciado...")
     app.run_polling(drop_pending_updates=True)
 
