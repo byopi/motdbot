@@ -27,27 +27,3 @@ if __name__ == "__main__":
     bot_thread.start()
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
-```
-
-El `requirements.txt`:
-```
-python-telegram-bot==21.3
-requests==2.32.3
-flask==3.0.3
-apscheduler==3.10.4
-pytz==2024.1
-```
-
-El `Procfile` (sin extensión):
-```
-web: python app.py
-```
-
-El `.gitignore`:
-```
-__pycache__/
-*.pyc
-*.pyo
-.env
-config.json
-.DS_Store
