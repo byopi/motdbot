@@ -1,6 +1,7 @@
+import os
+import asyncio
 import threading
 import logging
-import os
 from flask import Flask
 from bot import main as run_bot
 
@@ -19,11 +20,14 @@ def health():
 def ping():
     return "pong", 200
 
-def start_bot():
-    run_bot()
-
-if __name__ == "__main__":
-    bot_thread = threading.Thread(target=start_bot, daemon=True)
-    bot_thread.start()
+def start_flask():
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
+
+if __name__ == "__main__":
+    # Flask corre en un hilo aparte (solo para mantener vivo el proceso en Render)
+    flask_thread = threading.Thread(target=start_flask, daemon=True)
+    flask_thread.start()
+
+    # El bot corre en el hilo principal con su propio event loop
+    run_bot()
