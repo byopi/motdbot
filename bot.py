@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 TOKEN = os.environ.get("TELEGRAM_TOKEN")
 API_KEY = os.environ.get("API_FOOTBALL_KEY")
-CHANNEL_ID_ENV = os.environ.get("CHANNEL_ID")  # ← fallback permanente
+CHANNEL_ID_ENV = os.environ.get("CHANNEL_ID")  # fallback permanente en Render
 CONFIG_FILE = "config.json"
 TZ = pytz.timezone("America/Caracas")  # UTC-4
 
