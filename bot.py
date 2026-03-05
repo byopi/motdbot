@@ -62,7 +62,7 @@ LEAGUES = {
     "4429":   ("🌍", "Mundial FIFA"),
     "4502":   ("🇪🇺", "Eurocopa"),
     "4499":   ("🌎", "Copa América"),
-    "4410":   ("🌍", "Copa Africana de Naciones"),
+    "4496":   ("🌍", "Copa Africana de Naciones"),
     "4501":   ("🌎", "CONMEBOL Libertadores"),
     "4724":   ("🌎", "CONMEBOL Sudamericana"),
     "5665":   ("🌎", "Recopa Sudamericana"),
