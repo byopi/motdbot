@@ -117,7 +117,8 @@ def parse_local_time(utc_str: str):
 
 def format_message(all_matches: dict) -> str:
     if not all_matches:
-        return "🍿 ¡PARTIDOS DE HOY! ⚽️\n\nNo hay partidos hoy en las ligas seleccionadas.\n\n<i>⚽️ Suscríbete en t.me/iUniversoFootball</i>"
+        return "🍿 ¡PARTIDOS DE HOY! ⚽️\n\nNo hay partidos hoy en las ligas seleccionadas.\n\n"
+        "<i>⚽️ Suscríbete en t.me/iUniversoFootball</i>""
 
     lines = ["🍿 ¡PARTIDOS DE HOY! ⚽️"]
 
