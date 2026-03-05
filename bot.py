@@ -39,7 +39,6 @@ GFA_PASSWORD = "gfa1234"
 
 ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer"
 
-# slug ESPN → (flag, nombre para mostrar)
 LEAGUES = {
     "ger.1":                  ("🇩🇪", "Bundesliga"),
     "ger.dfb_pokal":          ("🇩🇪", "DFB-Pokal"),
@@ -89,11 +88,9 @@ def get_today_utc4() -> str:
     return datetime.now(TZ).strftime("%Y-%m-%d")
 
 def espn_date(date_str: str) -> str:
-    """Convierte YYYY-MM-DD a YYYYMMDD para la API de ESPN."""
     return date_str.replace("-", "")
 
 def parse_event_time(utc_str: str):
-    """Convierte timestamp UTC de ESPN a hora local UTC-4."""
     try:
         dt_utc = datetime.fromisoformat(utc_str.replace("Z", "+00:00"))
         dt_local = dt_utc.astimezone(TZ)
@@ -101,10 +98,35 @@ def parse_event_time(utc_str: str):
     except Exception:
         return "--:--", None
 
+def get_round_name(event: dict) -> str:
+    """Extrae el nombre de la ronda/jornada de un evento ESPN de forma segura."""
+    try:
+        competitions = event.get("competitions", [])
+        if not competitions:
+            return ""
+        comp = competitions[0]
+
+        # Intentar con notes (ej: "Cuartos de Final")
+        notes = comp.get("notes", [])
+        if notes and isinstance(notes, list) and isinstance(notes[0], dict):
+            headline = notes[0].get("headline", "")
+            if headline:
+                return headline
+
+        # Intentar con week number (jornada de liga)
+        week = event.get("week", {})
+        if isinstance(week, dict):
+            number = week.get("number")
+            if number:
+                return f"Jornada {number}"
+
+        return ""
+    except Exception:
+        return ""
+
 # ─── API ESPN ──────────────────────────────────────────────────────────────────
 
 def fetch_league(slug: str, date_str: str) -> list:
-    """Consulta ESPN para una liga y fecha. Devuelve lista de eventos."""
     try:
         resp = requests.get(
             f"{ESPN_BASE}/{slug}/scoreboard",
@@ -120,42 +142,33 @@ def fetch_league(slug: str, date_str: str) -> list:
         return []
 
 def fetch_matches_for_date(local_date: str) -> dict:
-    """
-    Consulta todas las ligas para la fecha local dada (UTC-4).
-    Filtra cada evento por su fecha local real para manejar diferencias de zona horaria.
-    """
     all_matches: dict = {}
 
     for slug, (flag, name) in LEAGUES.items():
         events = fetch_league(slug, local_date)
 
         for event in events:
-            # Fecha/hora del evento
             utc_str = event.get("date", "")
             time_str, dt_local = parse_event_time(utc_str)
 
-            # Verificar que el partido sea en la fecha local correcta
+            # Filtrar por fecha local correcta
             if dt_local and dt_local.strftime("%Y-%m-%d") != local_date:
                 continue
 
-            # Round/jornada
-            season_type = event.get("season", {}).get("type", {})
-            round_raw = (
-                event.get("week", {}).get("number")
-                or season_type.get("name", "")
-            )
-            competitions = event.get("competitions", [{}])
-            comp = competitions[0] if competitions else {}
-            round_name = comp.get("notes", [{}])
-            if round_name and isinstance(round_name, list):
-                round_name = round_name[0].get("headline", "") or ""
-            elif not isinstance(round_name, str):
-                round_name = str(round_raw) if round_raw else ""
+            round_name = get_round_name(event)
 
             # Equipos
+            competitions = event.get("competitions", [{}])
+            comp = competitions[0] if competitions else {}
             competitors = comp.get("competitors", [])
-            home = next((c.get("team", {}).get("displayName", "?") for c in competitors if c.get("homeAway") == "home"), "?")
-            away = next((c.get("team", {}).get("displayName", "?") for c in competitors if c.get("homeAway") == "away"), "?")
+            home = next(
+                (c.get("team", {}).get("displayName", "?")
+                 for c in competitors if c.get("homeAway") == "home"), "?"
+            )
+            away = next(
+                (c.get("team", {}).get("displayName", "?")
+                 for c in competitors if c.get("homeAway") == "away"), "?"
+            )
 
             if slug not in all_matches:
                 all_matches[slug] = (flag, name, round_name, [])
@@ -184,10 +197,11 @@ def format_message(all_matches: dict) -> str:
     lines = [header]
 
     for slug, (flag, name, round_name, matches) in all_matches.items():
-        # Ordenar por hora
-        matches_sorted = sorted(matches, key=lambda m: m["dt_local"] or datetime.max.replace(tzinfo=TZ))
+        matches_sorted = sorted(
+            matches,
+            key=lambda m: m["dt_local"] if m["dt_local"] else datetime.max.replace(tzinfo=TZ)
+        )
 
-        # Agrupar por hora
         groups: dict = {}
         for match in matches_sorted:
             groups.setdefault(match["time_str"], []).append(match)
@@ -295,14 +309,18 @@ async def testfecha_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     msg = format_message(all_matches)
     try:
         await send_to_channel(context.bot, channel_id, msg)
-        await update.message.reply_text(f"✅ Enviado: {fecha} → <code>{channel_id}</code>", parse_mode="HTML")
+        await update.message.reply_text(
+            f"✅ Enviado: {fecha} → <code>{channel_id}</code>", parse_mode="HTML"
+        )
     except Exception as e:
         await update.message.reply_text(f"❌ Error: <code>{e}</code>", parse_mode="HTML")
 
 # ─── /gfa ──────────────────────────────────────────────────────────────────────
 
 async def gfa_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    await update.message.reply_text("🔐 <b>Vinculación de canal</b>\n\nIngresa la contraseña:", parse_mode="HTML")
+    await update.message.reply_text(
+        "🔐 <b>Vinculación de canal</b>\n\nIngresa la contraseña:", parse_mode="HTML"
+    )
     return ASK_PASSWORD
 
 async def gfa_check_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -342,7 +360,10 @@ async def gfa_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 async def post_init(application) -> None:
     scheduler = AsyncIOScheduler(timezone=TZ)
-    scheduler.add_job(send_daily_matches, trigger="cron", hour=0, minute=0, kwargs={"bot": application.bot})
+    scheduler.add_job(
+        send_daily_matches, trigger="cron", hour=0, minute=0,
+        kwargs={"bot": application.bot}
+    )
     scheduler.start()
     logger.info("Scheduler iniciado — 00:00 UTC-4.")
 
