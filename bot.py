@@ -40,43 +40,35 @@ TSDB_BASE = f"https://www.thesportsdb.com/api/v1/json/{TSDB_KEY}"
 ASK_PASSWORD, ASK_CHANNEL = range(2)
 GFA_PASSWORD = "gfa1234"
 
-# ─── IDs verificados directamente en thesportsdb.com ──────────────────────────
+# ─── IDs actuales (verificar con /debugids) ────────────────────────────────────
 LEAGUES = {
-    # Alemania
-    "4331": ("🇩🇪", "Bundesliga"),
-    "4485": ("🇩🇪", "DFB-Pokal"),             # ← corregido (era 4398)
-    # España
-    "4335": ("🇪🇸", "LaLiga EA Sports"),
-    "4483": ("🇪🇸", "Copa del Rey"),           # ← corregido (era 4406)
-    "4511": ("🇪🇸", "Supercopa de España"),    # ← corregido (era 556)
-    # Francia
-    "4334": ("🇫🇷", "Ligue 1"),
-    "4484": ("🇫🇷", "Copa de Francia"),
-    # Inglaterra
-    "4328": ("🇬🇧", "Premier League"),
-    "4482": ("🇬🇧", "FA Cup"),                 # ← corregido (era 4580)
-    "4570": ("🇬🇧", "EFL Cup"),                # ← corregido (era 4443)
-    "4571": ("🇬🇧", "Community Shield"),       # ← corregido (era 528)
-    # Italia
-    "4332": ("🇮🇹", "Serie A"),
-    "4506": ("🇮🇹", "Copa Italia"),            # ← corregido (era 4400)
-    # Europa
-    "4480": ("🌍", "Champions League"),
-    "4481": ("🌍", "Europa League"),
-    "5071": ("🌍", "Conference League"),       # ← corregido (era 4579)
-    "4490": ("🌍", "Nations League"),          # ← corregido (era 4486)
-    # Mundial / Internacionales
-    "4429": ("🌍", "Mundial FIFA"),            # ← corregido (era 4407)
-    "4502": ("🇪🇺", "Eurocopa"),               # ← corregido (era 4408)
-    "4499": ("🌎", "Copa América"),            # ← corregido (era 4409)
-    "4410": ("🌍", "Copa Africana de Naciones"),
-    # Sudamérica
-    "4501": ("🌎", "CONMEBOL Libertadores"),   # ← corregido (era 4344)
-    "4724": ("🌎", "CONMEBOL Sudamericana"),   # ← corregido (era 4345)
-    "5665": ("🌎", "Recopa Sudamericana"),     # ← corregido (era 133604)
+    "4331":   ("🇩🇪", "Bundesliga"),
+    "4485":   ("🇩🇪", "DFB-Pokal"),
+    "4335":   ("🇪🇸", "LaLiga EA Sports"),
+    "4483":   ("🇪🇸", "Copa del Rey"),
+    "4511":   ("🇪🇸", "Supercopa de España"),
+    "4334":   ("🇫🇷", "Ligue 1"),
+    "4484":   ("🇫🇷", "Copa de Francia"),
+    "4328":   ("🇬🇧", "Premier League"),
+    "4482":   ("🇬🇧", "FA Cup"),
+    "4570":   ("🇬🇧", "EFL Cup"),
+    "4571":   ("🇬🇧", "Community Shield"),
+    "4332":   ("🇮🇹", "Serie A"),
+    "4506":   ("🇮🇹", "Copa Italia"),
+    "4480":   ("🌍", "Champions League"),
+    "4481":   ("🌍", "Europa League"),
+    "5071":   ("🌍", "Conference League"),
+    "4490":   ("🌍", "Nations League"),
+    "4429":   ("🌍", "Mundial FIFA"),
+    "4502":   ("🇪🇺", "Eurocopa"),
+    "4499":   ("🌎", "Copa América"),
+    "4410":   ("🌍", "Copa Africana de Naciones"),
+    "4501":   ("🌎", "CONMEBOL Libertadores"),
+    "4724":   ("🌎", "CONMEBOL Sudamericana"),
+    "5665":   ("🌎", "Recopa Sudamericana"),
 }
 
-# Ligas cuyos partidos nocturnos pueden aparecer en UTC como el día siguiente
+# Ligas con partidos nocturnos que en UTC aparecen el día siguiente
 LATE_NIGHT_LEAGUES = {
     "4501",  # CONMEBOL Libertadores
     "4724",  # CONMEBOL Sudamericana
@@ -84,6 +76,34 @@ LATE_NIGHT_LEAGUES = {
     "4499",  # Copa América
     "4429",  # Mundial FIFA
 }
+
+# Términos de búsqueda para /debugids: (término, país para desambiguar)
+LEAGUES_TO_VERIFY = [
+    ("Bundesliga",                    "Germany"),
+    ("DFB-Pokal",                     "Germany"),
+    ("La Liga",                       "Spain"),
+    ("Copa del Rey",                  "Spain"),
+    ("Supercopa de Espana",           "Spain"),
+    ("Ligue 1",                       "France"),
+    ("Coupe de France",               "France"),
+    ("Premier League",                "England"),
+    ("FA Cup",                        "England"),
+    ("EFL Cup",                       "England"),
+    ("FA Community Shield",           "England"),
+    ("Serie A",                       "Italy"),
+    ("Coppa Italia",                  "Italy"),
+    ("UEFA Champions League",         ""),
+    ("UEFA Europa League",            ""),
+    ("UEFA Europa Conference League", ""),
+    ("UEFA Nations League",           ""),
+    ("FIFA World Cup",                ""),
+    ("UEFA Euro",                     ""),
+    ("Copa America",                  ""),
+    ("African Cup of Nations",        ""),
+    ("Copa Libertadores",             ""),
+    ("Copa Sudamericana",             ""),
+    ("Recopa Sudamericana",           ""),
+]
 
 # ─── Config helpers ────────────────────────────────────────────────────────────
 
@@ -125,9 +145,7 @@ def parse_event_time(event: dict):
 
 def event_local_date(event: dict) -> Optional[str]:
     _, dt_local = parse_event_time(event)
-    if dt_local:
-        return dt_local.strftime("%Y-%m-%d")
-    return None
+    return dt_local.strftime("%Y-%m-%d") if dt_local else None
 
 # ─── API helpers ───────────────────────────────────────────────────────────────
 
@@ -145,10 +163,9 @@ def fetch_events_for_utc_date(utc_date: str) -> list:
 
 def fetch_matches_for_date(local_date: str) -> dict:
     dt_local = datetime.strptime(local_date, "%Y-%m-%d")
-    utc_same = local_date
     utc_next = (dt_local + timedelta(days=1)).strftime("%Y-%m-%d")
 
-    events_same = fetch_events_for_utc_date(utc_same)
+    events_same = fetch_events_for_utc_date(local_date)
     events_next = fetch_events_for_utc_date(utc_next)
 
     all_matches: dict = {}
@@ -161,12 +178,7 @@ def fetch_matches_for_date(local_date: str) -> dict:
             return
         flag, name = LEAGUES[league_id]
         round_raw = event.get("intRound") or event.get("strRound") or ""
-        if str(round_raw).isdigit():
-            round_name = f"Jornada {round_raw}"
-        elif round_raw:
-            round_name = str(round_raw)
-        else:
-            round_name = ""
+        round_name = f"Jornada {round_raw}" if str(round_raw).isdigit() else str(round_raw)
         if league_id not in all_matches:
             all_matches[league_id] = (flag, name, round_name, [])
         existing_ids = {e.get("idEvent") for e in all_matches[league_id][3]}
@@ -175,7 +187,6 @@ def fetch_matches_for_date(local_date: str) -> dict:
 
     for event in events_same:
         add_event(event)
-
     for event in events_next:
         if str(event.get("idLeague", "")) in LATE_NIGHT_LEAGUES:
             add_event(event)
@@ -184,6 +195,79 @@ def fetch_matches_for_date(local_date: str) -> dict:
 
 def fetch_matches() -> dict:
     return fetch_matches_for_date(get_today_utc4())
+
+# ─── /debugids ─────────────────────────────────────────────────────────────────
+
+async def debugids_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    await update.message.reply_text("⏳ Consultando TheSportsDB para cada liga, espera...")
+
+    # Mapa inverso: id → nombre (para comparar)
+    id_to_name = {lid: name for lid, (_, name) in LEAGUES.items()}
+
+    lines = ["🔍 <b>Verificación de IDs — TheSportsDB</b>\n"]
+    ok = 0
+    wrong = 0
+    notfound = 0
+
+    for search_term, country in LEAGUES_TO_VERIFY:
+        try:
+            resp = requests.get(
+                f"{TSDB_BASE}/searchleagues.php",
+                params={"l": search_term},
+                timeout=10,
+            )
+            results = resp.json().get("countrys") or []
+
+            # Filtrar solo Soccer
+            soccer = [r for r in results if (r.get("strSport") or "").lower() == "soccer"]
+
+            # Priorizar por país si se especificó
+            match = None
+            if country:
+                for r in soccer:
+                    c = (r.get("strCountry") or "").lower()
+                    if country.lower() in c:
+                        match = r
+                        break
+            if not match and soccer:
+                match = soccer[0]
+
+            if not match:
+                lines.append(f"⚠️ <b>{search_term}</b> — no encontrada")
+                notfound += 1
+                continue
+
+            real_id   = str(match.get("idLeague", ""))
+            real_name = match.get("strLeague", "?")
+
+            # ¿Tenemos este ID en el bot?
+            if real_id in id_to_name:
+                lines.append(f"✅ <b>{real_name}</b>\n   ID <code>{real_id}</code> — correcto")
+                ok += 1
+            else:
+                # Buscar si tenemos alguna liga con nombre parecido
+                candidate_id = next(
+                    (lid for lid, (_, n) in LEAGUES.items()
+                     if any(w in n.lower() for w in search_term.lower().split())),
+                    "???"
+                )
+                lines.append(
+                    f"❌ <b>{real_name}</b>\n"
+                    f"   ID real: <code>{real_id}</code>  |  "
+                    f"Teníamos: <code>{candidate_id}</code>"
+                )
+                wrong += 1
+
+        except Exception as e:
+            lines.append(f"⚠️ <b>{search_term}</b> — error: {e}")
+            notfound += 1
+
+    lines.append(f"\n📊 <b>{ok} correctos · {wrong} incorrectos · {notfound} no encontrados</b>")
+
+    full = "\n".join(lines)
+    # Enviar en bloques de 4000 chars si hace falta
+    for i in range(0, len(full), 4000):
+        await update.message.reply_text(full[i:i+4000], parse_mode="HTML")
 
 # ─── Formatter ─────────────────────────────────────────────────────────────────
 
@@ -195,7 +279,6 @@ def format_message(all_matches: dict) -> str:
         return header + "\n\n" + "No hay partidos hoy en las ligas seleccionadas." + "\n\n" + footer
 
     lines = [header]
-
     for league_id, (flag, name, round_name, events) in all_matches.items():
         def sort_key(e):
             _, dt = parse_event_time(e)
@@ -243,7 +326,7 @@ async def send_to_channel(bot, channel_id: str, text: str) -> None:
         await bot.send_animation(chat_id=channel_id, animation=GIF_URL)
         await bot.send_message(chat_id=channel_id, text=text, parse_mode="HTML")
 
-# ─── Scheduler job ─────────────────────────────────────────────────────────────
+# ─── Scheduler ────────────────────────────────────────────────────────────────
 
 async def send_daily_matches(bot) -> None:
     channel_id = get_channel_id()
@@ -258,102 +341,64 @@ async def send_daily_matches(bot) -> None:
     except Exception as e:
         logger.error(f"Error al enviar mensaje: {e}")
 
-# ─── /start ────────────────────────────────────────────────────────────────────
+# ─── Comandos ─────────────────────────────────────────────────────────────────
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     name = update.effective_user.first_name or "crack"
     await update.message.reply_text(
         f"👋 ¡Hola, {name}!\n\n"
         "Soy el bot de <b>iUniversoFootball</b> ⚽️\n"
-        "Publico automáticamente los partidos del día en el canal "
-        "cada noche a las <b>00:00 (UTC-4)</b>.\n\n"
-        "📋 <b>Comandos disponibles:</b>\n"
-        "• /start — Muestra este mensaje\n"
-        "• /gfa — Vincula un canal al bot\n"
-        "• /test — Envía los partidos de hoy al canal\n"
-        "• /testfecha YYYY-MM-DD — Prueba con una fecha específica\n\n"
+        "Publico los partidos del día cada noche a las <b>00:00 (UTC-4)</b>.\n\n"
+        "📋 <b>Comandos:</b>\n"
+        "• /start — Este mensaje\n"
+        "• /gfa — Vincula un canal\n"
+        "• /test — Envía partidos de hoy\n"
+        "• /testfecha YYYY-MM-DD — Prueba con fecha específica\n\n"
         "<i>⚽️ Suscríbete en t.me/iUniversoFootball</i>",
         parse_mode="HTML",
     )
 
-# ─── /test ─────────────────────────────────────────────────────────────────────
-
 async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     channel_id = get_channel_id()
     if not channel_id:
-        await update.message.reply_text(
-            "❌ No hay canal configurado. Usa /gfa para vincularlo primero."
-        )
+        await update.message.reply_text("❌ No hay canal configurado. Usa /gfa primero.")
         return
-
     await update.message.reply_text("⏳ Buscando partidos de hoy...")
     all_matches = fetch_matches()
     msg = format_message(all_matches)
-
     try:
         await send_to_channel(context.bot, channel_id, msg)
-        await update.message.reply_text(
-            f"✅ Enviado al canal <code>{channel_id}</code>.",
-            parse_mode="HTML",
-        )
+        await update.message.reply_text(f"✅ Enviado a <code>{channel_id}</code>.", parse_mode="HTML")
     except Exception as e:
-        await update.message.reply_text(
-            f"❌ No pude enviar al canal.\n<code>{e}</code>",
-            parse_mode="HTML",
-        )
-
-# ─── /testfecha ────────────────────────────────────────────────────────────────
+        await update.message.reply_text(f"❌ Error: <code>{e}</code>", parse_mode="HTML")
 
 async def testfecha_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     channel_id = get_channel_id()
     if not channel_id:
-        await update.message.reply_text(
-            "❌ No hay canal configurado. Usa /gfa para vincularlo primero."
-        )
+        await update.message.reply_text("❌ No hay canal configurado. Usa /gfa primero.")
         return
-
     if not context.args or len(context.args) != 1:
-        await update.message.reply_text(
-            "❌ Formato incorrecto.\n"
-            "Uso: <code>/testfecha YYYY-MM-DD</code>\n"
-            "Ejemplo: <code>/testfecha 2026-03-08</code>",
-            parse_mode="HTML",
-        )
+        await update.message.reply_text("❌ Uso: <code>/testfecha YYYY-MM-DD</code>", parse_mode="HTML")
         return
-
     fecha = context.args[0]
     try:
         datetime.strptime(fecha, "%Y-%m-%d")
     except ValueError:
-        await update.message.reply_text(
-            "❌ Fecha inválida. Usa el formato <code>YYYY-MM-DD</code>.",
-            parse_mode="HTML",
-        )
+        await update.message.reply_text("❌ Fecha inválida. Formato: <code>YYYY-MM-DD</code>", parse_mode="HTML")
         return
-
     await update.message.reply_text(f"⏳ Buscando partidos del {fecha}...")
     all_matches = fetch_matches_for_date(fecha)
     msg = format_message(all_matches)
-
     try:
         await send_to_channel(context.bot, channel_id, msg)
-        await update.message.reply_text(
-            f"✅ Partidos del {fecha} enviados al canal <code>{channel_id}</code>.",
-            parse_mode="HTML",
-        )
+        await update.message.reply_text(f"✅ Enviado: {fecha} → <code>{channel_id}</code>", parse_mode="HTML")
     except Exception as e:
-        await update.message.reply_text(
-            f"❌ No pude enviar al canal.\n<code>{e}</code>",
-            parse_mode="HTML",
-        )
+        await update.message.reply_text(f"❌ Error: <code>{e}</code>", parse_mode="HTML")
 
 # ─── /gfa ──────────────────────────────────────────────────────────────────────
 
 async def gfa_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
-    await update.message.reply_text(
-        "🔐 <b>Vinculación de canal</b>\n\nIngresa la contraseña para continuar:",
-        parse_mode="HTML",
-    )
+    await update.message.reply_text("🔐 <b>Vinculación de canal</b>\n\nIngresa la contraseña:", parse_mode="HTML")
     return ASK_PASSWORD
 
 async def gfa_check_password(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -361,10 +406,7 @@ async def gfa_check_password(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("❌ Contraseña incorrecta. Operación cancelada.")
         return ConversationHandler.END
     await update.message.reply_text(
-        "✅ Contraseña correcta.\n\n"
-        "Envíame el <b>ID del canal</b> que quieres vincular.\n"
-        "Ejemplo: <code>-1001234567890</code>\n\n"
-        "<i>Asegúrate de que el bot sea administrador del canal.</i>",
+        "✅ Correcto.\n\nEnvíame el <b>ID del canal</b>.\nEjemplo: <code>-1001234567890</code>",
         parse_mode="HTML",
     )
     return ASK_CHANNEL
@@ -375,23 +417,16 @@ async def gfa_save_channel(update: Update, context: ContextTypes.DEFAULT_TYPE) -
     try:
         member = await context.bot.get_chat_member(chat_id=channel_id, user_id=user_id)
         if member.status not in ("administrator", "creator"):
-            await update.message.reply_text("❌ No eres administrador de ese canal. Cancelado.")
+            await update.message.reply_text("❌ No eres administrador de ese canal.")
             return ConversationHandler.END
     except Exception as e:
-        await update.message.reply_text(
-            f"❌ No pude verificar el canal.\n<code>{e}</code>",
-            parse_mode="HTML",
-        )
+        await update.message.reply_text(f"❌ No pude verificar.\n<code>{e}</code>", parse_mode="HTML")
         return ConversationHandler.END
     config = load_config()
     config["channel_id"] = channel_id
     save_config(config)
     await update.message.reply_text(
-        f"✅ ¡Canal vinculado!\n\n"
-        f"📢 Canal: <code>{channel_id}</code>\n"
-        f"🕛 Publicación diaria a las <b>00:00 (UTC-4)</b>.\n\n"
-        f"Usa /test para enviar un mensaje de prueba ahora mismo.",
-        parse_mode="HTML",
+        f"✅ Canal vinculado: <code>{channel_id}</code>\nUsa /test para probar.", parse_mode="HTML"
     )
     return ConversationHandler.END
 
@@ -403,15 +438,9 @@ async def gfa_cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
 
 async def post_init(application) -> None:
     scheduler = AsyncIOScheduler(timezone=TZ)
-    scheduler.add_job(
-        send_daily_matches,
-        trigger="cron",
-        hour=0,
-        minute=0,
-        kwargs={"bot": application.bot},
-    )
+    scheduler.add_job(send_daily_matches, trigger="cron", hour=0, minute=0, kwargs={"bot": application.bot})
     scheduler.start()
-    logger.info("Scheduler iniciado — publicación diaria a las 00:00 UTC-4.")
+    logger.info("Scheduler iniciado — 00:00 UTC-4.")
 
 # ─── Entry point ───────────────────────────────────────────────────────────────
 
@@ -433,6 +462,7 @@ def main() -> None:
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("test", test_command))
     application.add_handler(CommandHandler("testfecha", testfecha_command))
+    application.add_handler(CommandHandler("debugids", debugids_command))
     application.add_handler(gfa_handler)
 
     logger.info("Bot iniciado...")
