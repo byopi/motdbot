@@ -38,32 +38,52 @@ GIF_URL = (
 ASK_PASSWORD, ASK_CHANNEL = range(2)
 GFA_PASSWORD = "gfa1234"
 
+# Temporadas correctas por liga:
+# - Ligas europeas con temporada cruzada (ej: 2024/25) usan el año de inicio: 2024
+# - Copas internacionales y sudamericanas usan el año en curso: 2025
+# La función get_season() calcula automáticamente según el mes:
+#   enero-julio  → temporada del año anterior (ej: en marzo 2026 → 2025)
+#   agosto-dic   → temporada del año actual   (ej: en sept 2026  → 2026)
+
+def get_season(date_str: Optional[str] = None) -> int:
+    if date_str:
+        dt = datetime.strptime(date_str, "%Y-%m-%d")
+    else:
+        dt = datetime.now(TZ)
+    # Temporadas europeas arrancan en agosto
+    if dt.month < 8:
+        return dt.year - 1
+    return dt.year
+
+# Liga ID → (flag, nombre, usa_temporada_europea)
+# usa_temporada_europea=True  → season = año anterior si estamos en ene-jul
+# usa_temporada_europea=False → season = año del partido (Copa América, Libertadores, etc.)
 LEAGUES = {
-    78:  ("🇩🇪", "Bundesliga"),
-    81:  ("🇩🇪", "DFB-Pokal"),
-    140: ("🇪🇸", "LaLiga EA Sports"),
-    143: ("🇪🇸", "Copa del Rey"),
-    556: ("🇪🇸", "Supercopa de España"),
-    61:  ("🇫🇷", "Ligue 1"),
-    66:  ("🇫🇷", "Copa de Francia"),
-    39:  ("🇬🇧", "Premier League"),
-    45:  ("🇬🇧", "FA Cup"),
-    48:  ("🇬🇧", "EFL Cup"),
-    528: ("🇬🇧", "Community Shield"),
-    135: ("🇮🇹", "Serie A"),
-    137: ("🇮🇹", "Copa Italia"),
-    547: ("🇮🇹", "Supercopa de Italia"),
-    1:   ("🌍", "Mundial FIFA"),
-    4:   ("🇪🇺", "Eurocopa"),
-    9:   ("🌎", "Copa América"),
-    6:   ("🌍", "Copa Africana de Naciones"),
-    5:   ("🌍", "Nations League"),
-    2:   ("🌍", "Champions League"),
-    848: ("🌍", "Conference League"),
-    3:   ("🌍", "Europa League"),
-    13:  ("🌎", "CONMEBOL Libertadores"),
-    11:  ("🌎", "CONMEBOL Sudamericana"),
-    541: ("🌎", "Recopa Sudamericana"),
+    78:  ("🇩🇪", "Bundesliga",              True),
+    81:  ("🇩🇪", "DFB-Pokal",               True),
+    140: ("🇪🇸", "LaLiga EA Sports",         True),
+    143: ("🇪🇸", "Copa del Rey",             True),
+    556: ("🇪🇸", "Supercopa de España",      True),
+    61:  ("🇫🇷", "Ligue 1",                  True),
+    66:  ("🇫🇷", "Copa de Francia",          True),
+    39:  ("🇬🇧", "Premier League",           True),
+    45:  ("🇬🇧", "FA Cup",                   True),
+    48:  ("🇬🇧", "EFL Cup",                  True),
+    528: ("🇬🇧", "Community Shield",         True),
+    135: ("🇮🇹", "Serie A",                  True),
+    137: ("🇮🇹", "Copa Italia",              True),
+    547: ("🇮🇹", "Supercopa de Italia",      True),
+    1:   ("🌍", "Mundial FIFA",              False),
+    4:   ("🇪🇺", "Eurocopa",                 False),
+    9:   ("🌎", "Copa América",              False),
+    6:   ("🌍", "Copa Africana de Naciones", False),
+    5:   ("🌍", "Nations League",            True),
+    2:   ("🌍", "Champions League",          True),
+    848: ("🌍", "Conference League",         True),
+    3:   ("🌍", "Europa League",             True),
+    13:  ("🌎", "CONMEBOL Libertadores",     False),
+    11:  ("🌎", "CONMEBOL Sudamericana",     False),
+    541: ("🌎", "Recopa Sudamericana",       False),
 }
 
 # ─── Config helpers ────────────────────────────────────────────────────────────
@@ -87,13 +107,18 @@ def get_channel_id() -> Optional[str]:
 def get_today_utc4() -> str:
     return datetime.now(TZ).strftime("%Y-%m-%d")
 
-def fetch_matches_for_date(date: str, season: int) -> dict:
+def fetch_matches_for_date(date: str) -> dict:
+    season_euro = get_season(date)
+    season_intl = int(date[:4])  # año del partido para ligas sin temporada cruzada
+
     headers = {
         "x-rapidapi-key": API_KEY,
         "x-rapidapi-host": "v3.football.api-sports.io",
     }
     all_matches = {}
-    for league_id, (flag, name) in LEAGUES.items():
+
+    for league_id, (flag, name, is_euro) in LEAGUES.items():
+        season = season_euro if is_euro else season_intl
         try:
             resp = requests.get(
                 "https://v3.football.api-sports.io/fixtures",
@@ -101,17 +126,30 @@ def fetch_matches_for_date(date: str, season: int) -> dict:
                 params={"league": league_id, "date": date, "season": season},
                 timeout=10,
             )
-            fixtures = resp.json().get("response", [])
+            data = resp.json()
+            fixtures = data.get("response", [])
             if fixtures:
                 all_matches[league_id] = (flag, name, fixtures)
+            else:
+                # Si no encontró con la temporada calculada, intenta con la otra
+                alt_season = season_intl if is_euro else season_euro
+                if alt_season != season:
+                    resp2 = requests.get(
+                        "https://v3.football.api-sports.io/fixtures",
+                        headers=headers,
+                        params={"league": league_id, "date": date, "season": alt_season},
+                        timeout=10,
+                    )
+                    fixtures2 = resp2.json().get("response", [])
+                    if fixtures2:
+                        all_matches[league_id] = (flag, name, fixtures2)
         except Exception as e:
             logger.error(f"Error fetching league {league_id} ({name}): {e}")
+
     return all_matches
 
 def fetch_matches() -> dict:
-    date = get_today_utc4()
-    season = datetime.now(TZ).year
-    return fetch_matches_for_date(date, season)
+    return fetch_matches_for_date(get_today_utc4())
 
 # ─── Formatter ─────────────────────────────────────────────────────────────────
 
@@ -124,18 +162,11 @@ def parse_local_time(utc_str: str):
         return "--:--", None
 
 def format_message(all_matches: dict) -> str:
-    # Negrita para el header, cursiva para el footer
     header = "<b>🍿 ¡PARTIDOS DE HOY! ⚽️</b>"
     footer = "<i>⚽️ Suscríbete en t.me/iUniversoFootball</i>"
 
     if not all_matches:
-        return (
-            header
-            + "\n\n"
-            + "No hay partidos hoy en las ligas seleccionadas."
-            + "\n\n"
-            + footer
-        )
+        return header + "\n\n" + "No hay partidos hoy en las ligas seleccionadas." + "\n\n" + footer
 
     lines = [header]
 
@@ -153,7 +184,6 @@ def format_message(all_matches: dict) -> str:
             time_str, _ = parse_local_time(match["fixture"]["date"])
             groups.setdefault(time_str, []).append(match)
 
-        # Línea en blanco + cabecera de liga + línea en blanco
         lines.append("")
         lines.append(f"{flag} | {name} - {round_name}")
         lines.append("")
@@ -167,7 +197,6 @@ def format_message(all_matches: dict) -> str:
             if i < len(time_slots) - 1:
                 lines.append("")
 
-    # Línea en blanco antes del footer
     lines.append("")
     lines.append(footer)
     return "\n".join(lines)
@@ -175,7 +204,6 @@ def format_message(all_matches: dict) -> str:
 # ─── Envío al canal — GIF + texto en un solo post ──────────────────────────────
 
 async def send_to_channel(bot, channel_id: str, text: str) -> None:
-    # Telegram permite máximo 1024 caracteres en caption de animación
     if len(text) <= 1024:
         await bot.send_animation(
             chat_id=channel_id,
@@ -276,10 +304,8 @@ async def testfecha_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         )
         return
 
-    season = int(fecha[:4])
     await update.message.reply_text(f"⏳ Buscando partidos del {fecha}...")
-
-    all_matches = fetch_matches_for_date(fecha, season)
+    all_matches = fetch_matches_for_date(fecha)
     msg = format_message(all_matches)
 
     try:
