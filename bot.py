@@ -98,27 +98,60 @@ def parse_event_time(utc_str: str):
     except Exception:
         return "--:--", None
 
+# Traducciones de términos de ronda ESPN (inglés → español)
+ROUND_TRANSLATIONS = {
+    "1st leg": "Ida",
+    "2nd leg": "Vuelta",
+    "round of 16": "Octavos de Final",
+    "round of 32": "Dieciseisavos de Final",
+    "quarterfinals": "Cuartos de Final",
+    "semifinals": "Semifinales",
+    "final": "Final",
+    "third place": "Tercer Puesto",
+    "group stage": "Fase de Grupos",
+    "playoff": "Playoff",
+    "qualifying": "Clasificación",
+    "extra time": "Prórroga",
+}
+
+def translate_round(text: str) -> str:
+    if not text:
+        return ""
+    lower = text.strip().lower()
+    for eng, esp in ROUND_TRANSLATIONS.items():
+        if eng in lower:
+            return esp
+    return text.strip()
+
 def get_round_name(event: dict) -> str:
     """Extrae el nombre de la ronda/jornada de un evento ESPN de forma segura."""
     try:
         competitions = event.get("competitions", [])
-        if not competitions:
-            return ""
-        comp = competitions[0]
+        comp = competitions[0] if competitions else {}
 
-        # Intentar con notes (ej: "Cuartos de Final")
+        # 1) notes → headline (ej: "Quarterfinals", "1st Leg")
         notes = comp.get("notes", [])
         if notes and isinstance(notes, list) and isinstance(notes[0], dict):
             headline = notes[0].get("headline", "")
             if headline:
-                return headline
+                return translate_round(headline)
 
-        # Intentar con week number (jornada de liga)
+        # 2) week.number → "Jornada N"
         week = event.get("week", {})
         if isinstance(week, dict):
             number = week.get("number")
             if number:
                 return f"Jornada {number}"
+
+        # 3) season.type → descripción del tipo de fase
+        season = event.get("season", {})
+        if isinstance(season, dict):
+            stype = season.get("type", {})
+            if isinstance(stype, dict):
+                desc = stype.get("abbreviation") or stype.get("name", "")
+                translated = translate_round(str(desc)) if desc else ""
+                if translated and translated.lower() not in ("regular season", "temporada regular", "reg"):
+                    return translated
 
         return ""
     except Exception:
@@ -186,6 +219,35 @@ def fetch_matches() -> dict:
     return fetch_matches_for_date(get_today_utc4())
 
 # ─── Formatter ─────────────────────────────────────────────────────────────────
+
+
+# --- /debugjson ---
+
+async def debugjson_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    # Consulta Premier League y muestra el JSON crudo del primer evento
+    import json as json_mod
+    slug = context.args[0] if context.args else "eng.1"
+    date = get_today_utc4()
+    events = fetch_league(slug, date)
+    if not events:
+        await update.message.reply_text(f"No hay eventos para {slug} hoy.")
+        return
+    ev = events[0]
+    # Mostrar campos clave
+    keys_to_show = {
+        "name": ev.get("name"),
+        "date": ev.get("date"),
+        "week": ev.get("week"),
+        "season": ev.get("season"),
+        "competitions[0].notes": ev.get("competitions", [{}])[0].get("notes"),
+        "competitions[0].status.type.description": ev.get("competitions", [{}])[0].get("status", {}).get("type", {}).get("description"),
+        "competitions[0].situation": ev.get("competitions", [{}])[0].get("situation"),
+    }
+    text = f"<b>JSON de {slug} — primer evento</b>\n\n"
+    for k, v in keys_to_show.items():
+        text += f"<code>{k}</code>:\n{json_mod.dumps(v, ensure_ascii=False)}\n\n"
+    for chunk in [text[i:i+4000] for i in range(0, len(text), 4000)]:
+        await update.message.reply_text(chunk, parse_mode="HTML")
 
 def format_message(all_matches: dict) -> str:
     header = "<b>🍿 ¡PARTIDOS DE HOY! ⚽️</b>"
@@ -384,6 +446,7 @@ def main() -> None:
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("test", test_command))
     application.add_handler(CommandHandler("testfecha", testfecha_command))
+    application.add_handler(CommandHandler("debugjson", debugjson_command))
     application.add_handler(gfa_handler)
 
     logger.info("Bot iniciado...")
