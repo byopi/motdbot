@@ -28,7 +28,12 @@ CHANNEL_ID_ENV = os.environ.get("CHANNEL_ID")
 CONFIG_FILE = "config.json"
 TZ = pytz.timezone("America/Caracas")  # UTC-4
 
-GIF_URL = "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEhgjGA2lzs-pgUhRrGYImfMvrjRFkGnili3j9_rSSnll0F83NELGw0q3zqjJtPJ1Wcb7aPq5KS2wtfBnDZTre8V1swHgrJ1Ec_I-087cInEOsic_6sbaTqsEx0UGUlY97w8vh1zU5RzjsXNSfBXIlmTmDOWrdo4oE8nuxkxHSkP33y4Lard0BsQGvV3kGM/s600/doc_2026-03-04_19-31-59.gif"
+GIF_URL = (
+    "https://blogger.googleusercontent.com/img/b/R29vZ2xl/"
+    "AVvXsEhgjGA2lzs-pgUhRrGYImfMvrjRFkGnili3j9_rSSnll0F83NELGw0q3zqjJtPJ1Wcb7aPq5KS2wtfBn"
+    "DZTre8V1swHgrJ1Ec_I-087cInEOsic_6sbaTqsEx0UGUlY97w8vh1zU5RzjsXNSfBXIlmTmDOWrdo4oE8nux"
+    "kxHSkP33y4Lard0BsQGvV3kGM/s600/doc_2026-03-04_19-31-59.gif"
+)
 
 ASK_PASSWORD, ASK_CHANNEL = range(2)
 GFA_PASSWORD = "gfa1234"
@@ -82,9 +87,7 @@ def get_channel_id() -> Optional[str]:
 def get_today_utc4() -> str:
     return datetime.now(TZ).strftime("%Y-%m-%d")
 
-def fetch_matches() -> dict:
-    date = get_today_utc4()
-    season = datetime.now(TZ).year
+def fetch_matches_for_date(date: str, season: int) -> dict:
     headers = {
         "x-rapidapi-key": API_KEY,
         "x-rapidapi-host": "v3.football.api-sports.io",
@@ -105,6 +108,11 @@ def fetch_matches() -> dict:
             logger.error(f"Error fetching league {league_id} ({name}): {e}")
     return all_matches
 
+def fetch_matches() -> dict:
+    date = get_today_utc4()
+    season = datetime.now(TZ).year
+    return fetch_matches_for_date(date, season)
+
 # ─── Formatter ─────────────────────────────────────────────────────────────────
 
 def parse_local_time(utc_str: str):
@@ -116,11 +124,20 @@ def parse_local_time(utc_str: str):
         return "--:--", None
 
 def format_message(all_matches: dict) -> str:
-    if not all_matches:
-        return "🍿 ¡PARTIDOS DE HOY! ⚽️\n\nNo hay partidos hoy en las ligas seleccionadas.\n\n"
-        "<i>⚽️ Suscríbete en t.me/iUniversoFootball</i>""
+    # Negrita para el header, cursiva para el footer
+    header = "<b>🍿 ¡PARTIDOS DE HOY! ⚽️</b>"
+    footer = "<i>⚽️ Suscríbete en t.me/iUniversoFootball</i>"
 
-    lines = ["🍿 ¡PARTIDOS DE HOY! ⚽️"]
+    if not all_matches:
+        return (
+            header
+            + "\n\n"
+            + "No hay partidos hoy en las ligas seleccionadas."
+            + "\n\n"
+            + footer
+        )
+
+    lines = [header]
 
     for league_id, (flag, name, fixtures) in all_matches.items():
         round_name = fixtures[0]["league"].get("round", "")
@@ -136,6 +153,7 @@ def format_message(all_matches: dict) -> str:
             time_str, _ = parse_local_time(match["fixture"]["date"])
             groups.setdefault(time_str, []).append(match)
 
+        # Línea en blanco + cabecera de liga + línea en blanco
         lines.append("")
         lines.append(f"{flag} | {name} - {round_name}")
         lines.append("")
@@ -149,24 +167,25 @@ def format_message(all_matches: dict) -> str:
             if i < len(time_slots) - 1:
                 lines.append("")
 
+    # Línea en blanco antes del footer
     lines.append("")
-    lines.append("⚽️ Suscríbete en t.me/iUniversoFootball")
+    lines.append(footer)
     return "\n".join(lines)
 
 # ─── Envío al canal — GIF + texto en un solo post ──────────────────────────────
 
 async def send_to_channel(bot, channel_id: str, text: str) -> None:
-    # Telegram permite hasta 1024 caracteres en caption de una animación.
-    # Si el texto es más largo, mandamos el GIF sin caption y el texto aparte.
+    # Telegram permite máximo 1024 caracteres en caption de animación
     if len(text) <= 1024:
         await bot.send_animation(
             chat_id=channel_id,
             animation=GIF_URL,
             caption=text,
+            parse_mode="HTML",
         )
     else:
         await bot.send_animation(chat_id=channel_id, animation=GIF_URL)
-        await bot.send_message(chat_id=channel_id, text=text)
+        await bot.send_message(chat_id=channel_id, text=text, parse_mode="HTML")
 
 # ─── Scheduler job ─────────────────────────────────────────────────────────────
 
@@ -179,7 +198,7 @@ async def send_daily_matches(bot) -> None:
     msg = format_message(all_matches)
     try:
         await send_to_channel(bot, channel_id, msg)
-        logger.info(f"✅ Partidos enviados a {channel_id}")
+        logger.info(f"Partidos enviados a {channel_id}")
     except Exception as e:
         logger.error(f"Error al enviar mensaje: {e}")
 
@@ -195,7 +214,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         "📋 <b>Comandos disponibles:</b>\n"
         "• /start — Muestra este mensaje\n"
         "• /gfa — Vincula un canal al bot\n"
-        "• /test — Envía los partidos de hoy al canal configurado\n\n"
+        "• /test — Envía los partidos de hoy al canal\n"
+        "• /testfecha YYYY-MM-DD — Prueba con una fecha específica\n\n"
         "<i>⚽️ Suscríbete en t.me/iUniversoFootball</i>",
         parse_mode="HTML",
     )
@@ -217,7 +237,55 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
     try:
         await send_to_channel(context.bot, channel_id, msg)
         await update.message.reply_text(
-            f"✅ Mensaje de prueba enviado al canal <code>{channel_id}</code>.",
+            f"✅ Enviado al canal <code>{channel_id}</code>.",
+            parse_mode="HTML",
+        )
+    except Exception as e:
+        await update.message.reply_text(
+            f"❌ No pude enviar al canal.\n<code>{e}</code>",
+            parse_mode="HTML",
+        )
+
+# ─── /testfecha ────────────────────────────────────────────────────────────────
+
+async def testfecha_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    channel_id = get_channel_id()
+    if not channel_id:
+        await update.message.reply_text(
+            "❌ No hay canal configurado. Usa /gfa para vincularlo primero."
+        )
+        return
+
+    if not context.args or len(context.args) != 1:
+        await update.message.reply_text(
+            "❌ Formato incorrecto.\n"
+            "Uso: <code>/testfecha YYYY-MM-DD</code>\n"
+            "Ejemplo: <code>/testfecha 2026-03-08</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    fecha = context.args[0]
+    try:
+        datetime.strptime(fecha, "%Y-%m-%d")
+    except ValueError:
+        await update.message.reply_text(
+            "❌ Fecha inválida. Usa el formato <code>YYYY-MM-DD</code>.\n"
+            "Ejemplo: <code>/testfecha 2026-03-08</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    season = int(fecha[:4])
+    await update.message.reply_text(f"⏳ Buscando partidos del {fecha}...")
+
+    all_matches = fetch_matches_for_date(fecha, season)
+    msg = format_message(all_matches)
+
+    try:
+        await send_to_channel(context.bot, channel_id, msg)
+        await update.message.reply_text(
+            f"✅ Partidos del {fecha} enviados al canal <code>{channel_id}</code>.",
             parse_mode="HTML",
         )
     except Exception as e:
@@ -294,7 +362,7 @@ async def post_init(application) -> None:
         kwargs={"bot": application.bot},
     )
     scheduler.start()
-    logger.info("⏰ Scheduler iniciado — publicación diaria a las 00:00 UTC-4.")
+    logger.info("Scheduler iniciado — publicación diaria a las 00:00 UTC-4.")
 
 # ─── Entry point ───────────────────────────────────────────────────────────────
 
@@ -317,9 +385,10 @@ def main() -> None:
 
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("test", test_command))
+    application.add_handler(CommandHandler("testfecha", testfecha_command))
     application.add_handler(gfa_handler)
 
-    logger.info("🤖 Bot iniciado...")
+    logger.info("Bot iniciado...")
     application.run_polling(drop_pending_updates=True)
 
 if __name__ == "__main__":
