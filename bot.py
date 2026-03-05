@@ -41,10 +41,10 @@ LEAGUES = {
     556: ("🇪🇸", "Supercopa de España"),
     61:  ("🇫🇷", "Ligue 1"),
     66:  ("🇫🇷", "Copa de Francia"),
-    39:  ("🇬🇧", "Premier League"),
-    45:  ("🇬🇧", "FA Cup"),
-    48:  ("🇬🇧", "EFL Cup"),
-    528: ("🇬🇧", "Community Shield"),
+    39:  ("🏴󠁧󠁢󠁥󠁮󠁧󠁿", "Premier League"),
+    45:  ("🏴󠁧󠁢󠁥󠁮󠁧󠁿", "FA Cup"),
+    48:  ("🏴󠁧󠁢󠁥󠁮󠁧󠁿", "EFL Cup"),
+    528: ("🏴󠁧󠁢󠁥󠁮󠁧󠁿", "Community Shield"),
     135: ("🇮🇹", "Serie A"),
     137: ("🇮🇹", "Copa Italia"),
     547: ("🇮🇹", "Supercopa de Italia"),
@@ -152,11 +152,20 @@ def format_message(all_matches: dict) -> str:
     lines.append("⚽️ Suscríbete en t.me/iUniversoFootball")
     return "\n".join(lines)
 
-# ─── Envío al canal ────────────────────────────────────────────────────────────
+# ─── Envío al canal — GIF + texto en un solo post ──────────────────────────────
 
 async def send_to_channel(bot, channel_id: str, text: str) -> None:
-    await bot.send_animation(chat_id=channel_id, animation=GIF_URL)
-    await bot.send_message(chat_id=channel_id, text=text)
+    # Telegram permite hasta 1024 caracteres en caption de una animación.
+    # Si el texto es más largo, mandamos el GIF sin caption y el texto aparte.
+    if len(text) <= 1024:
+        await bot.send_animation(
+            chat_id=channel_id,
+            animation=GIF_URL,
+            caption=text,
+        )
+    else:
+        await bot.send_animation(chat_id=channel_id, animation=GIF_URL)
+        await bot.send_message(chat_id=channel_id, text=text)
 
 # ─── Scheduler job ─────────────────────────────────────────────────────────────
 
