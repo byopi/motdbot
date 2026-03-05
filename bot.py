@@ -41,10 +41,10 @@ LEAGUES = {
     556: ("🇪🇸", "Supercopa de España"),
     61:  ("🇫🇷", "Ligue 1"),
     66:  ("🇫🇷", "Copa de Francia"),
-    39:  ("🏴󠁧󠁢󠁥󠁮󠁧󠁿", "Premier League"),
-    45:  ("🏴󠁧󠁢󠁥󠁮󠁧󠁿", "FA Cup"),
-    48:  ("🏴󠁧󠁢󠁥󠁮󠁧󠁿", "EFL Cup"),
-    528: ("🏴󠁧󠁢󠁥󠁮󠁧󠁿", "Community Shield"),
+    39:  ("🇬🇧", "Premier League"),
+    45:  ("🇬🇧", "FA Cup"),
+    48:  ("🇬🇧", "EFL Cup"),
+    528: ("🇬🇧", "Community Shield"),
     135: ("🇮🇹", "Serie A"),
     137: ("🇮🇹", "Copa Italia"),
     547: ("🇮🇹", "Supercopa de Italia"),
@@ -117,7 +117,7 @@ def parse_local_time(utc_str: str):
 
 def format_message(all_matches: dict) -> str:
     if not all_matches:
-        return "🍿 ¡PARTIDOS DE HOY! ⚽️\n\nNo hay partidos hoy en las ligas seleccionadas."
+        return "🍿 ¡PARTIDOS DE HOY! ⚽️\n\nNo hay partidos hoy en las ligas seleccionadas.\n\n<i>⚽️ Suscríbete en t.me/iUniversoFootball</i>"
 
     lines = ["🍿 ¡PARTIDOS DE HOY! ⚽️"]
 
