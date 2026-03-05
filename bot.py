@@ -215,12 +215,9 @@ def format_message(all_matches: dict) -> str:
         lines.append(league_header)
         lines.append("")
 
-        time_slots = list(groups.keys())
-        for i, time_str in enumerate(time_slots):
+        for time_str in list(groups.keys()):
             for match in groups[time_str]:
                 lines.append(f"{match['home']} - {match['away']} {time_str}")
-            if i < len(time_slots) - 1:
-                lines.append("")
 
     lines.append("")
     lines.append(footer)
