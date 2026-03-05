@@ -77,34 +77,6 @@ LATE_NIGHT_LEAGUES = {
     "4429",  # Mundial FIFA
 }
 
-# Términos de búsqueda para /debugids: (término, país para desambiguar)
-LEAGUES_TO_VERIFY = [
-    ("Bundesliga",                    "Germany"),
-    ("DFB-Pokal",                     "Germany"),
-    ("La Liga",                       "Spain"),
-    ("Copa del Rey",                  "Spain"),
-    ("Supercopa de Espana",           "Spain"),
-    ("Ligue 1",                       "France"),
-    ("Coupe de France",               "France"),
-    ("Premier League",                "England"),
-    ("FA Cup",                        "England"),
-    ("EFL Cup",                       "England"),
-    ("FA Community Shield",           "England"),
-    ("Serie A",                       "Italy"),
-    ("Coppa Italia",                  "Italy"),
-    ("UEFA Champions League",         ""),
-    ("UEFA Europa League",            ""),
-    ("UEFA Europa Conference League", ""),
-    ("UEFA Nations League",           ""),
-    ("FIFA World Cup",                ""),
-    ("UEFA Euro",                     ""),
-    ("Copa America",                  ""),
-    ("African Cup of Nations",        ""),
-    ("Copa Libertadores",             ""),
-    ("Copa Sudamericana",             ""),
-    ("Recopa Sudamericana",           ""),
-]
-
 # ─── Config helpers ────────────────────────────────────────────────────────────
 
 def load_config() -> dict:
@@ -199,73 +171,63 @@ def fetch_matches() -> dict:
 # ─── /debugids ─────────────────────────────────────────────────────────────────
 
 async def debugids_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text("⏳ Consultando TheSportsDB para cada liga, espera...")
+    await update.message.reply_text("⏳ Verificando IDs en TheSportsDB, espera...")
 
-    # Mapa inverso: id → nombre (para comparar)
     id_to_name = {lid: name for lid, (_, name) in LEAGUES.items()}
 
     lines = ["🔍 <b>Verificación de IDs — TheSportsDB</b>\n"]
     ok = 0
     wrong = 0
-    notfound = 0
 
-    for search_term, country in LEAGUES_TO_VERIFY:
+    # Países a consultar y sus ligas (endpoint: search_all_leagues.php?c=COUNTRY&s=Soccer)
+    countries = ["Germany", "Spain", "France", "England", "Italy", "Europe", "International"]
+
+    # Recopilar todas las ligas de todos los países en un solo dict id→data
+    all_remote: dict = {}
+    for country in countries:
         try:
             resp = requests.get(
-                f"{TSDB_BASE}/searchleagues.php",
-                params={"l": search_term},
+                f"{TSDB_BASE}/search_all_leagues.php",
+                params={"c": country, "s": "Soccer"},
                 timeout=10,
             )
-            results = resp.json().get("countrys") or []
+            leagues = resp.json().get("countrys") or []
+            for lg in leagues:
+                lid = str(lg.get("idLeague", ""))
+                if lid:
+                    all_remote[lid] = lg
+        except Exception as e:
+            lines.append(f"⚠️ Error consultando {country}: {e}")
 
-            # Filtrar solo Soccer
-            soccer = [r for r in results if (r.get("strSport") or "").lower() == "soccer"]
-
-            # Priorizar por país si se especificó
-            match = None
-            if country:
-                for r in soccer:
-                    c = (r.get("strCountry") or "").lower()
-                    if country.lower() in c:
-                        match = r
-                        break
-            if not match and soccer:
-                match = soccer[0]
-
-            if not match:
-                lines.append(f"⚠️ <b>{search_term}</b> — no encontrada")
-                notfound += 1
-                continue
-
-            real_id   = str(match.get("idLeague", ""))
-            real_name = match.get("strLeague", "?")
-
-            # ¿Tenemos este ID en el bot?
-            if real_id in id_to_name:
-                lines.append(f"✅ <b>{real_name}</b>\n   ID <code>{real_id}</code> — correcto")
-                ok += 1
-            else:
-                # Buscar si tenemos alguna liga con nombre parecido
-                candidate_id = next(
-                    (lid for lid, (_, n) in LEAGUES.items()
-                     if any(w in n.lower() for w in search_term.lower().split())),
-                    "???"
+    # Verificar cada ID que tenemos
+    for our_id, (flag, our_name) in LEAGUES.items():
+        if our_id in all_remote:
+            real_name = all_remote[our_id].get("strLeague", "?")
+            lines.append(f"✅ <code>{our_id}</code> <b>{real_name}</b> — correcto")
+            ok += 1
+        else:
+            # Intentar lookup directo por ID para confirmar si existe
+            try:
+                resp2 = requests.get(
+                    f"{TSDB_BASE}/lookupleague.php",
+                    params={"id": our_id},
+                    timeout=10,
                 )
-                lines.append(
-                    f"❌ <b>{real_name}</b>\n"
-                    f"   ID real: <code>{real_id}</code>  |  "
-                    f"Teníamos: <code>{candidate_id}</code>"
-                )
+                data = resp2.json().get("leagues") or []
+                if data:
+                    real_name = data[0].get("strLeague", "?")
+                    lines.append(f"✅ <code>{our_id}</code> <b>{real_name}</b> — correcto (lookup)")
+                    ok += 1
+                else:
+                    lines.append(f"❌ <code>{our_id}</code> <b>{our_name}</b> — ID NO encontrado")
+                    wrong += 1
+            except Exception as e:
+                lines.append(f"⚠️ <code>{our_id}</code> <b>{our_name}</b> — error lookup: {e}")
                 wrong += 1
 
-        except Exception as e:
-            lines.append(f"⚠️ <b>{search_term}</b> — error: {e}")
-            notfound += 1
-
-    lines.append(f"\n📊 <b>{ok} correctos · {wrong} incorrectos · {notfound} no encontrados</b>")
+    lines.append(f"\n📊 <b>{ok} correctos · {wrong} con problema</b>")
 
     full = "\n".join(lines)
-    # Enviar en bloques de 4000 chars si hace falta
     for i in range(0, len(full), 4000):
         await update.message.reply_text(full[i:i+4000], parse_mode="HTML")
 
