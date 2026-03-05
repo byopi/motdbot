@@ -2,7 +2,7 @@ import os
 import json
 import logging
 import requests
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 import pytz
 from telegram import Update
@@ -26,6 +26,7 @@ TOKEN = os.environ.get("TELEGRAM_TOKEN")
 CHANNEL_ID_ENV = os.environ.get("CHANNEL_ID")
 CONFIG_FILE = "config.json"
 TZ = pytz.timezone("America/Caracas")  # UTC-4
+UTC = pytz.utc
 
 GIF_URL = (
     "https://blogger.googleusercontent.com/img/b/R29vZ2xl/"
@@ -34,39 +35,45 @@ GIF_URL = (
     "kxHSkP33y4Lard0BsQGvV3kGM/s600/doc_2026-03-04_19-31-59.gif"
 )
 
-# API key gratuita de TheSportsDB (no requiere registro)
 TSDB_KEY = "123"
 TSDB_BASE = f"https://www.thesportsdb.com/api/v1/json/{TSDB_KEY}"
 
 ASK_PASSWORD, ASK_CHANNEL = range(2)
 GFA_PASSWORD = "gfa1234"
 
-# IDs de ligas en TheSportsDB → (flag, nombre)
-# Puedes consultar IDs en: https://www.thesportsdb.com/league_list.php?s=Soccer
 LEAGUES = {
-    "4331": ("🇩🇪", "Bundesliga"),
-    "4398": ("🇩🇪", "DFB-Pokal"),
-    "4335": ("🇪🇸", "LaLiga EA Sports"),
-    "4406": ("🇪🇸", "Copa del Rey"),
-    "4328": ("🇬🇧", "Premier League"),
-    "4580": ("🇬🇧", "FA Cup"),
-    "4443": ("🇬🇧", "EFL Cup"),
-    "4334": ("🇫🇷", "Ligue 1"),
-    "4399": ("🇫🇷", "Copa de Francia"),
-    "4332": ("🇮🇹", "Serie A"),
-    "4400": ("🇮🇹", "Copa Italia"),
-    "4400": ("🇮🇹", "Copa Italia"),
-    "4480": ("🌍", "Champions League"),
-    "4481": ("🌍", "Europa League"),
-    "4579": ("🌍", "Conference League"),
-    "4443": ("🌍", "Nations League"),
-    "4344": ("🌎", "CONMEBOL Libertadores"),
-    "4345": ("🌎", "CONMEBOL Sudamericana"),
-    "133604":("🌎", "Recopa Sudamericana"),
-    "4399": ("🌍", "Mundial FIFA"),
-    "4408": ("🇪🇺", "Eurocopa"),
-    "4409": ("🌎", "Copa América"),
-    "4410": ("🌍", "Copa Africana de Naciones"),
+    "4331":   ("🇩🇪", "Bundesliga"),
+    "4398":   ("🇩🇪", "DFB-Pokal"),
+    "4335":   ("🇪🇸", "LaLiga EA Sports"),
+    "4406":   ("🇪🇸", "Copa del Rey"),
+    "4328":   ("🇬🇧", "Premier League"),
+    "4580":   ("🇬🇧", "FA Cup"),
+    "4443":   ("🇬🇧", "EFL Cup"),
+    "4334":   ("🇫🇷", "Ligue 1"),
+    "4484":   ("🇫🇷", "Copa de Francia"),
+    "4332":   ("🇮🇹", "Serie A"),
+    "4400":   ("🇮🇹", "Copa Italia"),
+    "4480":   ("🌍", "Champions League"),
+    "4481":   ("🌍", "Europa League"),
+    "4579":   ("🌍", "Conference League"),
+    "4486":   ("🌍", "Nations League"),
+    "4407":   ("🌍", "Mundial FIFA"),
+    "4408":   ("🇪🇺", "Eurocopa"),
+    "4409":   ("🌎", "Copa América"),
+    "4410":   ("🌍", "Copa Africana de Naciones"),
+    "4344":   ("🌎", "CONMEBOL Libertadores"),
+    "4345":   ("🌎", "CONMEBOL Sudamericana"),
+    "133604": ("🌎", "Recopa Sudamericana"),
+}
+
+# Ligas cuyos partidos nocturnos pueden aparecer en UTC como el día siguiente.
+# Para estas, consultamos también el día anterior en UTC y filtramos por fecha local.
+LATE_NIGHT_LEAGUES = {
+    "4344",    # CONMEBOL Libertadores
+    "4345",    # CONMEBOL Sudamericana
+    "133604",  # Recopa Sudamericana
+    "4409",    # Copa América
+    "4407",    # Mundial FIFA
 }
 
 # ─── Config helpers ────────────────────────────────────────────────────────────
@@ -85,43 +92,106 @@ def get_channel_id() -> Optional[str]:
     config = load_config()
     return config.get("channel_id") or CHANNEL_ID_ENV
 
-# ─── API helpers ───────────────────────────────────────────────────────────────
+# ─── Helpers de tiempo ─────────────────────────────────────────────────────────
 
 def get_today_utc4() -> str:
     return datetime.now(TZ).strftime("%Y-%m-%d")
 
-def fetch_matches_for_date(date: str) -> dict:
-    """
-    TheSportsDB: eventsday.php devuelve TODOS los eventos de fútbol del día.
-    Luego filtramos por los IDs de liga que nos interesan.
-    """
+def parse_event_time(event: dict):
+    """Convierte el timestamp UTC del evento a UTC-4. Devuelve (HH:MM, datetime_local)."""
+    try:
+        timestamp = event.get("strTimestamp") or ""
+        if timestamp:
+            dt_utc = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+            dt_local = dt_utc.astimezone(TZ)
+            return dt_local.strftime("%H:%M"), dt_local
+        date_str = event.get("dateEvent") or ""
+        time_str = (event.get("strTime") or "")[:5]
+        if date_str and time_str:
+            dt_utc = datetime.fromisoformat(f"{date_str}T{time_str}:00+00:00")
+            dt_local = dt_utc.astimezone(TZ)
+            return dt_local.strftime("%H:%M"), dt_local
+    except Exception:
+        pass
+    return "--:--", None
+
+def event_local_date(event: dict) -> Optional[str]:
+    """Devuelve la fecha local (UTC-4) del evento como string YYYY-MM-DD."""
+    _, dt_local = parse_event_time(event)
+    if dt_local:
+        return dt_local.strftime("%Y-%m-%d")
+    return None
+
+# ─── API helpers ───────────────────────────────────────────────────────────────
+
+def fetch_events_for_utc_date(utc_date: str) -> list:
+    """Consulta TheSportsDB para una fecha UTC y devuelve la lista de eventos."""
     try:
         resp = requests.get(
             f"{TSDB_BASE}/eventsday.php",
-            params={"d": date, "s": "Soccer"},
+            params={"d": utc_date, "s": "Soccer"},
             timeout=15,
         )
-        data = resp.json()
-        events = data.get("events") or []
+        return resp.json().get("events") or []
     except Exception as e:
-        logger.error(f"Error consultando TheSportsDB: {e}")
-        return {}
+        logger.error(f"Error consultando TheSportsDB ({utc_date}): {e}")
+        return []
 
-    # Agrupar por liga filtrando solo las que nos interesan
+def fetch_matches_for_date(local_date: str) -> dict:
+    """
+    Obtiene todos los partidos cuya fecha LOCAL (UTC-4) coincide con local_date.
+
+    Estrategia:
+    - Para todas las ligas: consultamos la fecha UTC equivalente (mismo día).
+    - Para ligas sudamericanas / mundiales (LATE_NIGHT_LEAGUES): consultamos
+      también el día siguiente en UTC, porque un partido a las 20:00 VET
+      equivale a las 00:00 UTC del día siguiente.
+    - Filtramos cada evento por su fecha local real para evitar duplicados o
+      partidos de otro día.
+    """
+    dt_local = datetime.strptime(local_date, "%Y-%m-%d")
+    utc_same  = local_date                                           # mismo día UTC
+    utc_next  = (dt_local + timedelta(days=1)).strftime("%Y-%m-%d") # día siguiente UTC
+
+    events_same = fetch_events_for_utc_date(utc_same)
+    events_next = fetch_events_for_utc_date(utc_next)
+
     all_matches: dict = {}
-    for event in events:
+
+    def add_event(event):
         league_id = str(event.get("idLeague", ""))
         if league_id not in LEAGUES:
-            continue
+            return
+        # Solo incluir si la fecha local del evento es la que pedimos
+        if event_local_date(event) != local_date:
+            return
 
         flag, name = LEAGUES[league_id]
-        round_name = event.get("intRound") or event.get("strRound") or ""
-        if round_name:
-            round_name = f"Jornada {round_name}" if str(round_name).isdigit() else str(round_name)
+        round_raw = event.get("intRound") or event.get("strRound") or ""
+        if str(round_raw).isdigit():
+            round_name = f"Jornada {round_raw}"
+        elif round_raw:
+            round_name = str(round_raw)
+        else:
+            round_name = ""
 
         if league_id not in all_matches:
             all_matches[league_id] = (flag, name, round_name, [])
-        all_matches[league_id][3].append(event)
+
+        # Evitar duplicados por idEvent
+        existing_ids = {e.get("idEvent") for e in all_matches[league_id][3]}
+        if event.get("idEvent") not in existing_ids:
+            all_matches[league_id][3].append(event)
+
+    # Procesar eventos del mismo día UTC (aplica a todas las ligas)
+    for event in events_same:
+        add_event(event)
+
+    # Procesar eventos del día siguiente UTC (solo ligas con partidos nocturnos)
+    for event in events_next:
+        league_id = str(event.get("idLeague", ""))
+        if league_id in LATE_NIGHT_LEAGUES:
+            add_event(event)
 
     return all_matches
 
@@ -129,29 +199,6 @@ def fetch_matches() -> dict:
     return fetch_matches_for_date(get_today_utc4())
 
 # ─── Formatter ─────────────────────────────────────────────────────────────────
-
-def parse_event_time(event: dict) -> tuple:
-    """
-    TheSportsDB devuelve strTimestamp (UTC) o strTime (hora local del evento).
-    Convertimos a UTC-4.
-    """
-    try:
-        timestamp = event.get("strTimestamp") or ""
-        if timestamp:
-            dt_utc = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-            dt_local = dt_utc.astimezone(TZ)
-            return dt_local.strftime("%H:%M"), dt_local
-        # fallback: strTime viene como "HH:MM:SS+00:00" aprox
-        time_str = event.get("strTime", "") or ""
-        date_str = event.get("dateEvent", "") or ""
-        if date_str and time_str:
-            time_str = time_str[:5]  # HH:MM
-            dt_utc = datetime.fromisoformat(f"{date_str}T{time_str}:00+00:00")
-            dt_local = dt_utc.astimezone(TZ)
-            return dt_local.strftime("%H:%M"), dt_local
-    except Exception:
-        pass
-    return "--:--", None
 
 def format_message(all_matches: dict) -> str:
     header = "<b>🍿 ¡PARTIDOS DE HOY! ⚽️</b>"
@@ -163,6 +210,7 @@ def format_message(all_matches: dict) -> str:
     lines = [header]
 
     for league_id, (flag, name, round_name, events) in all_matches.items():
+
         def sort_key(e):
             _, dt = parse_event_time(e)
             return dt if dt else datetime.max.replace(tzinfo=TZ)
@@ -174,12 +222,13 @@ def format_message(all_matches: dict) -> str:
             time_str, _ = parse_event_time(event)
             groups.setdefault(time_str, []).append(event)
 
-        header_line = f"{flag} | {name}"
+        league_header = f"<b>{flag} | {name}"
         if round_name:
-            header_line += f" - {round_name}"
+            league_header += f" - {round_name}"
+        league_header += "</b>"
 
         lines.append("")
-        lines.append(header_line)
+        lines.append(league_header)
         lines.append("")
 
         time_slots = list(groups.keys())
