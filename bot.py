@@ -38,26 +38,13 @@ GIF_URL = (
 ASK_PASSWORD, ASK_CHANNEL = range(2)
 GFA_PASSWORD = "gfa1234"
 
-# Temporadas correctas por liga:
-# - Ligas europeas con temporada cruzada (ej: 2024/25) usan el año de inicio: 2024
-# - Copas internacionales y sudamericanas usan el año en curso: 2025
-# La función get_season() calcula automáticamente según el mes:
-#   enero-julio  → temporada del año anterior (ej: en marzo 2026 → 2025)
-#   agosto-dic   → temporada del año actual   (ej: en sept 2026  → 2026)
+# Temporada europea actual: 2025 (temporada 2025/2026)
+# Actualiza este valor cada año en agosto cuando arranque la nueva temporada
+SEASON_EURO = 2025
 
-def get_season(date_str: Optional[str] = None) -> int:
-    if date_str:
-        dt = datetime.strptime(date_str, "%Y-%m-%d")
-    else:
-        dt = datetime.now(TZ)
-    # Temporadas europeas arrancan en agosto
-    if dt.month < 8:
-        return dt.year - 1
-    return dt.year
-
-# Liga ID → (flag, nombre, usa_temporada_europea)
-# usa_temporada_europea=True  → season = año anterior si estamos en ene-jul
-# usa_temporada_europea=False → season = año del partido (Copa América, Libertadores, etc.)
+# Liga ID → (flag, nombre, es_liga_europea)
+# es_liga_europea=True  → usa SEASON_EURO (2025)
+# es_liga_europea=False → usa el año del partido (Libertadores, Copa América, etc.)
 LEAGUES = {
     78:  ("🇩🇪", "Bundesliga",              True),
     81:  ("🇩🇪", "DFB-Pokal",               True),
@@ -73,17 +60,17 @@ LEAGUES = {
     135: ("🇮🇹", "Serie A",                  True),
     137: ("🇮🇹", "Copa Italia",              True),
     547: ("🇮🇹", "Supercopa de Italia",      True),
-    1:   ("🌍", "Mundial FIFA",              False),
+    1:   ("🌍",  "Mundial FIFA",             False),
     4:   ("🇪🇺", "Eurocopa",                 False),
-    9:   ("🌎", "Copa América",              False),
-    6:   ("🌍", "Copa Africana de Naciones", False),
-    5:   ("🌍", "Nations League",            True),
-    2:   ("🌍", "Champions League",          True),
-    848: ("🌍", "Conference League",         True),
-    3:   ("🌍", "Europa League",             True),
-    13:  ("🌎", "CONMEBOL Libertadores",     False),
-    11:  ("🌎", "CONMEBOL Sudamericana",     False),
-    541: ("🌎", "Recopa Sudamericana",       False),
+    9:   ("🌎",  "Copa América",             False),
+    6:   ("🌍",  "Copa Africana de Naciones",False),
+    5:   ("🌍",  "Nations League",           True),
+    2:   ("🌍",  "Champions League",         True),
+    848: ("🌍",  "Conference League",        True),
+    3:   ("🌍",  "Europa League",            True),
+    13:  ("🌎",  "CONMEBOL Libertadores",    False),
+    11:  ("🌎",  "CONMEBOL Sudamericana",    False),
+    541: ("🌎",  "Recopa Sudamericana",      False),
 }
 
 # ─── Config helpers ────────────────────────────────────────────────────────────
@@ -108,8 +95,7 @@ def get_today_utc4() -> str:
     return datetime.now(TZ).strftime("%Y-%m-%d")
 
 def fetch_matches_for_date(date: str) -> dict:
-    season_euro = get_season(date)
-    season_intl = int(date[:4])  # año del partido para ligas sin temporada cruzada
+    season_intl = int(date[:4])  # año del partido para ligas sudamericanas/mundiales
 
     headers = {
         "x-rapidapi-key": API_KEY,
@@ -118,7 +104,7 @@ def fetch_matches_for_date(date: str) -> dict:
     all_matches = {}
 
     for league_id, (flag, name, is_euro) in LEAGUES.items():
-        season = season_euro if is_euro else season_intl
+        season = SEASON_EURO if is_euro else season_intl
         try:
             resp = requests.get(
                 "https://v3.football.api-sports.io/fixtures",
@@ -126,23 +112,9 @@ def fetch_matches_for_date(date: str) -> dict:
                 params={"league": league_id, "date": date, "season": season},
                 timeout=10,
             )
-            data = resp.json()
-            fixtures = data.get("response", [])
+            fixtures = resp.json().get("response", [])
             if fixtures:
                 all_matches[league_id] = (flag, name, fixtures)
-            else:
-                # Si no encontró con la temporada calculada, intenta con la otra
-                alt_season = season_intl if is_euro else season_euro
-                if alt_season != season:
-                    resp2 = requests.get(
-                        "https://v3.football.api-sports.io/fixtures",
-                        headers=headers,
-                        params={"league": league_id, "date": date, "season": alt_season},
-                        timeout=10,
-                    )
-                    fixtures2 = resp2.json().get("response", [])
-                    if fixtures2:
-                        all_matches[league_id] = (flag, name, fixtures2)
         except Exception as e:
             logger.error(f"Error fetching league {league_id} ({name}): {e}")
 
