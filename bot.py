@@ -30,7 +30,6 @@ TZ = pytz.timezone("America/Caracas")  # UTC-4
 
 GIF_URL = "https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEhgjGA2lzs-pgUhRrGYImfMvrjRFkGnili3j9_rSSnll0F83NELGw0q3zqjJtPJ1Wcb7aPq5KS2wtfBnDZTre8V1swHgrJ1Ec_I-087cInEOsic_6sbaTqsEx0UGUlY97w8vh1zU5RzjsXNSfBXIlmTmDOWrdo4oE8nuxkxHSkP33y4Lard0BsQGvV3kGM/s600/doc_2026-03-04_19-31-59.gif"
 
-# Estados del ConversationHandler
 ASK_PASSWORD, ASK_CHANNEL = range(2)
 GFA_PASSWORD = "gfa1234"
 
@@ -42,10 +41,10 @@ LEAGUES = {
     556: ("🇪🇸", "Supercopa de España"),
     61:  ("🇫🇷", "Ligue 1"),
     66:  ("🇫🇷", "Copa de Francia"),
-    39:  ("🇬🇧", "Premier League"),
-    45:  ("🇬🇧", "FA Cup"),
-    48:  ("🇬🇧", "EFL Cup"),
-    528: ("🇬🇧", "Community Shield"),
+    39:  ("🏴󠁧󠁢󠁥󠁮󠁧󠁿", "Premier League"),
+    45:  ("🏴󠁧󠁢󠁥󠁮󠁧󠁿", "FA Cup"),
+    48:  ("🏴󠁧󠁢󠁥󠁮󠁧󠁿", "EFL Cup"),
+    528: ("🏴󠁧󠁢󠁥󠁮󠁧󠁿", "Community Shield"),
     135: ("🇮🇹", "Serie A"),
     137: ("🇮🇹", "Copa Italia"),
     547: ("🇮🇹", "Supercopa de Italia"),
