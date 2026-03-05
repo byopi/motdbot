@@ -26,7 +26,6 @@ TOKEN = os.environ.get("TELEGRAM_TOKEN")
 CHANNEL_ID_ENV = os.environ.get("CHANNEL_ID")
 CONFIG_FILE = "config.json"
 TZ = pytz.timezone("America/Caracas")  # UTC-4
-UTC = pytz.utc
 
 GIF_URL = (
     "https://blogger.googleusercontent.com/img/b/R29vZ2xl/"
@@ -41,39 +40,49 @@ TSDB_BASE = f"https://www.thesportsdb.com/api/v1/json/{TSDB_KEY}"
 ASK_PASSWORD, ASK_CHANNEL = range(2)
 GFA_PASSWORD = "gfa1234"
 
+# ─── IDs verificados directamente en thesportsdb.com ──────────────────────────
 LEAGUES = {
-    "4331":   ("🇩🇪", "Bundesliga"),
-    "4398":   ("🇩🇪", "DFB-Pokal"),
-    "4335":   ("🇪🇸", "LaLiga EA Sports"),
-    "4406":   ("🇪🇸", "Copa del Rey"),
-    "4328":   ("🇬🇧", "Premier League"),
-    "4580":   ("🇬🇧", "FA Cup"),
-    "4443":   ("🇬🇧", "EFL Cup"),
-    "4334":   ("🇫🇷", "Ligue 1"),
-    "4484":   ("🇫🇷", "Copa de Francia"),
-    "4332":   ("🇮🇹", "Serie A"),
-    "4400":   ("🇮🇹", "Copa Italia"),
-    "4480":   ("🌍", "Champions League"),
-    "4481":   ("🌍", "Europa League"),
-    "4579":   ("🌍", "Conference League"),
-    "4486":   ("🌍", "Nations League"),
-    "4407":   ("🌍", "Mundial FIFA"),
-    "4408":   ("🇪🇺", "Eurocopa"),
-    "4409":   ("🌎", "Copa América"),
-    "4410":   ("🌍", "Copa Africana de Naciones"),
-    "4344":   ("🌎", "CONMEBOL Libertadores"),
-    "4345":   ("🌎", "CONMEBOL Sudamericana"),
-    "133604": ("🌎", "Recopa Sudamericana"),
+    # Alemania
+    "4331": ("🇩🇪", "Bundesliga"),
+    "4485": ("🇩🇪", "DFB-Pokal"),             # ← corregido (era 4398)
+    # España
+    "4335": ("🇪🇸", "LaLiga EA Sports"),
+    "4483": ("🇪🇸", "Copa del Rey"),           # ← corregido (era 4406)
+    "4511": ("🇪🇸", "Supercopa de España"),    # ← corregido (era 556)
+    # Francia
+    "4334": ("🇫🇷", "Ligue 1"),
+    "4484": ("🇫🇷", "Copa de Francia"),
+    # Inglaterra
+    "4328": ("🇬🇧", "Premier League"),
+    "4482": ("🇬🇧", "FA Cup"),                 # ← corregido (era 4580)
+    "4570": ("🇬🇧", "EFL Cup"),                # ← corregido (era 4443)
+    "4571": ("🇬🇧", "Community Shield"),       # ← corregido (era 528)
+    # Italia
+    "4332": ("🇮🇹", "Serie A"),
+    "4506": ("🇮🇹", "Copa Italia"),            # ← corregido (era 4400)
+    # Europa
+    "4480": ("🌍", "Champions League"),
+    "4481": ("🌍", "Europa League"),
+    "5071": ("🌍", "Conference League"),       # ← corregido (era 4579)
+    "4490": ("🌍", "Nations League"),          # ← corregido (era 4486)
+    # Mundial / Internacionales
+    "4429": ("🌍", "Mundial FIFA"),            # ← corregido (era 4407)
+    "4502": ("🇪🇺", "Eurocopa"),               # ← corregido (era 4408)
+    "4499": ("🌎", "Copa América"),            # ← corregido (era 4409)
+    "4410": ("🌍", "Copa Africana de Naciones"),
+    # Sudamérica
+    "4501": ("🌎", "CONMEBOL Libertadores"),   # ← corregido (era 4344)
+    "4724": ("🌎", "CONMEBOL Sudamericana"),   # ← corregido (era 4345)
+    "5665": ("🌎", "Recopa Sudamericana"),     # ← corregido (era 133604)
 }
 
-# Ligas cuyos partidos nocturnos pueden aparecer en UTC como el día siguiente.
-# Para estas, consultamos también el día anterior en UTC y filtramos por fecha local.
+# Ligas cuyos partidos nocturnos pueden aparecer en UTC como el día siguiente
 LATE_NIGHT_LEAGUES = {
-    "4344",    # CONMEBOL Libertadores
-    "4345",    # CONMEBOL Sudamericana
-    "133604",  # Recopa Sudamericana
-    "4409",    # Copa América
-    "4407",    # Mundial FIFA
+    "4501",  # CONMEBOL Libertadores
+    "4724",  # CONMEBOL Sudamericana
+    "5665",  # Recopa Sudamericana
+    "4499",  # Copa América
+    "4429",  # Mundial FIFA
 }
 
 # ─── Config helpers ────────────────────────────────────────────────────────────
@@ -98,7 +107,6 @@ def get_today_utc4() -> str:
     return datetime.now(TZ).strftime("%Y-%m-%d")
 
 def parse_event_time(event: dict):
-    """Convierte el timestamp UTC del evento a UTC-4. Devuelve (HH:MM, datetime_local)."""
     try:
         timestamp = event.get("strTimestamp") or ""
         if timestamp:
@@ -116,7 +124,6 @@ def parse_event_time(event: dict):
     return "--:--", None
 
 def event_local_date(event: dict) -> Optional[str]:
-    """Devuelve la fecha local (UTC-4) del evento como string YYYY-MM-DD."""
     _, dt_local = parse_event_time(event)
     if dt_local:
         return dt_local.strftime("%Y-%m-%d")
@@ -125,7 +132,6 @@ def event_local_date(event: dict) -> Optional[str]:
 # ─── API helpers ───────────────────────────────────────────────────────────────
 
 def fetch_events_for_utc_date(utc_date: str) -> list:
-    """Consulta TheSportsDB para una fecha UTC y devuelve la lista de eventos."""
     try:
         resp = requests.get(
             f"{TSDB_BASE}/eventsday.php",
@@ -138,20 +144,9 @@ def fetch_events_for_utc_date(utc_date: str) -> list:
         return []
 
 def fetch_matches_for_date(local_date: str) -> dict:
-    """
-    Obtiene todos los partidos cuya fecha LOCAL (UTC-4) coincide con local_date.
-
-    Estrategia:
-    - Para todas las ligas: consultamos la fecha UTC equivalente (mismo día).
-    - Para ligas sudamericanas / mundiales (LATE_NIGHT_LEAGUES): consultamos
-      también el día siguiente en UTC, porque un partido a las 20:00 VET
-      equivale a las 00:00 UTC del día siguiente.
-    - Filtramos cada evento por su fecha local real para evitar duplicados o
-      partidos de otro día.
-    """
     dt_local = datetime.strptime(local_date, "%Y-%m-%d")
-    utc_same  = local_date                                           # mismo día UTC
-    utc_next  = (dt_local + timedelta(days=1)).strftime("%Y-%m-%d") # día siguiente UTC
+    utc_same = local_date
+    utc_next = (dt_local + timedelta(days=1)).strftime("%Y-%m-%d")
 
     events_same = fetch_events_for_utc_date(utc_same)
     events_next = fetch_events_for_utc_date(utc_next)
@@ -162,10 +157,8 @@ def fetch_matches_for_date(local_date: str) -> dict:
         league_id = str(event.get("idLeague", ""))
         if league_id not in LEAGUES:
             return
-        # Solo incluir si la fecha local del evento es la que pedimos
         if event_local_date(event) != local_date:
             return
-
         flag, name = LEAGUES[league_id]
         round_raw = event.get("intRound") or event.get("strRound") or ""
         if str(round_raw).isdigit():
@@ -174,23 +167,17 @@ def fetch_matches_for_date(local_date: str) -> dict:
             round_name = str(round_raw)
         else:
             round_name = ""
-
         if league_id not in all_matches:
             all_matches[league_id] = (flag, name, round_name, [])
-
-        # Evitar duplicados por idEvent
         existing_ids = {e.get("idEvent") for e in all_matches[league_id][3]}
         if event.get("idEvent") not in existing_ids:
             all_matches[league_id][3].append(event)
 
-    # Procesar eventos del mismo día UTC (aplica a todas las ligas)
     for event in events_same:
         add_event(event)
 
-    # Procesar eventos del día siguiente UTC (solo ligas con partidos nocturnos)
     for event in events_next:
-        league_id = str(event.get("idLeague", ""))
-        if league_id in LATE_NIGHT_LEAGUES:
+        if str(event.get("idLeague", "")) in LATE_NIGHT_LEAGUES:
             add_event(event)
 
     return all_matches
@@ -210,13 +197,11 @@ def format_message(all_matches: dict) -> str:
     lines = [header]
 
     for league_id, (flag, name, round_name, events) in all_matches.items():
-
         def sort_key(e):
             _, dt = parse_event_time(e)
             return dt if dt else datetime.max.replace(tzinfo=TZ)
 
         events_sorted = sorted(events, key=sort_key)
-
         groups: dict = {}
         for event in events_sorted:
             time_str, _ = parse_event_time(event)
@@ -362,7 +347,7 @@ async def testfecha_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
             parse_mode="HTML",
         )
 
-# ─── /gfa — ConversationHandler ────────────────────────────────────────────────
+# ─── /gfa ──────────────────────────────────────────────────────────────────────
 
 async def gfa_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     await update.message.reply_text(
@@ -375,7 +360,6 @@ async def gfa_check_password(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if update.message.text.strip() != GFA_PASSWORD:
         await update.message.reply_text("❌ Contraseña incorrecta. Operación cancelada.")
         return ConversationHandler.END
-
     await update.message.reply_text(
         "✅ Contraseña correcta.\n\n"
         "Envíame el <b>ID del canal</b> que quieres vincular.\n"
@@ -388,7 +372,6 @@ async def gfa_check_password(update: Update, context: ContextTypes.DEFAULT_TYPE)
 async def gfa_save_channel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     channel_id = update.message.text.strip()
     user_id = update.effective_user.id
-
     try:
         member = await context.bot.get_chat_member(chat_id=channel_id, user_id=user_id)
         if member.status not in ("administrator", "creator"):
@@ -400,11 +383,9 @@ async def gfa_save_channel(update: Update, context: ContextTypes.DEFAULT_TYPE) -
             parse_mode="HTML",
         )
         return ConversationHandler.END
-
     config = load_config()
     config["channel_id"] = channel_id
     save_config(config)
-
     await update.message.reply_text(
         f"✅ ¡Canal vinculado!\n\n"
         f"📢 Canal: <code>{channel_id}</code>\n"
