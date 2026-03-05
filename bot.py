@@ -34,47 +34,37 @@ GIF_URL = (
     "kxHSkP33y4Lard0BsQGvV3kGM/s600/doc_2026-03-04_19-31-59.gif"
 )
 
-TSDB_KEY = "123"
-TSDB_BASE = f"https://www.thesportsdb.com/api/v1/json/{TSDB_KEY}"
-
 ASK_PASSWORD, ASK_CHANNEL = range(2)
 GFA_PASSWORD = "gfa1234"
 
-# ─── IDs actuales (verificar con /debugids) ────────────────────────────────────
-LEAGUES = {
-    "4331":   ("🇩🇪", "Bundesliga"),
-    "4485":   ("🇩🇪", "DFB-Pokal"),
-    "4335":   ("🇪🇸", "LaLiga EA Sports"),
-    "4483":   ("🇪🇸", "Copa del Rey"),
-    "4511":   ("🇪🇸", "Supercopa de España"),
-    "4334":   ("🇫🇷", "Ligue 1"),
-    "4484":   ("🇫🇷", "Copa de Francia"),
-    "4328":   ("🇬🇧", "Premier League"),
-    "4482":   ("🇬🇧", "FA Cup"),
-    "4570":   ("🇬🇧", "EFL Cup"),
-    "4571":   ("🇬🇧", "Community Shield"),
-    "4332":   ("🇮🇹", "Serie A"),
-    "4506":   ("🇮🇹", "Copa Italia"),
-    "4480":   ("🌍", "Champions League"),
-    "4481":   ("🌍", "Europa League"),
-    "5071":   ("🌍", "Conference League"),
-    "4490":   ("🌍", "Nations League"),
-    "4429":   ("🌍", "Mundial FIFA"),
-    "4502":   ("🇪🇺", "Eurocopa"),
-    "4499":   ("🌎", "Copa América"),
-    "4496":   ("🌍", "Copa Africana de Naciones"),
-    "4501":   ("🌎", "CONMEBOL Libertadores"),
-    "4724":   ("🌎", "CONMEBOL Sudamericana"),
-    "5665":   ("🌎", "Recopa Sudamericana"),
-}
+ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer"
 
-# Ligas con partidos nocturnos que en UTC aparecen el día siguiente
-LATE_NIGHT_LEAGUES = {
-    "4501",  # CONMEBOL Libertadores
-    "4724",  # CONMEBOL Sudamericana
-    "5665",  # Recopa Sudamericana
-    "4499",  # Copa América
-    "4429",  # Mundial FIFA
+# slug ESPN → (flag, nombre para mostrar)
+LEAGUES = {
+    "ger.1":                  ("🇩🇪", "Bundesliga"),
+    "ger.dfb_pokal":          ("🇩🇪", "DFB-Pokal"),
+    "esp.1":                  ("🇪🇸", "LaLiga EA Sports"),
+    "esp.copa_del_rey":       ("🇪🇸", "Copa del Rey"),
+    "esp.super_cup":          ("🇪🇸", "Supercopa de España"),
+    "fra.1":                  ("🇫🇷", "Ligue 1"),
+    "fra.coupe_de_france":    ("🇫🇷", "Copa de Francia"),
+    "eng.1":                  ("🇬🇧", "Premier League"),
+    "eng.fa":                 ("🇬🇧", "FA Cup"),
+    "eng.league_cup":         ("🇬🇧", "EFL Cup"),
+    "eng.community_shield":   ("🇬🇧", "Community Shield"),
+    "ita.1":                  ("🇮🇹", "Serie A"),
+    "ita.coppa_italia":       ("🇮🇹", "Copa Italia"),
+    "uefa.champions":         ("🌍", "Champions League"),
+    "uefa.europa":            ("🌍", "Europa League"),
+    "uefa.europa.conf":       ("🌍", "Conference League"),
+    "uefa.nations":           ("🌍", "Nations League"),
+    "fifa.world":             ("🌍", "Mundial FIFA"),
+    "uefa.euro":              ("🇪🇺", "Eurocopa"),
+    "conmebol.america":       ("🌎", "Copa América"),
+    "caf.nations":            ("🌍", "Copa Africana de Naciones"),
+    "conmebol.libertadores":  ("🌎", "CONMEBOL Libertadores"),
+    "conmebol.sudamericana":  ("🌎", "CONMEBOL Sudamericana"),
+    "conmebol.recopa":        ("🌎", "Recopa Sudamericana"),
 }
 
 # ─── Config helpers ────────────────────────────────────────────────────────────
@@ -98,169 +88,91 @@ def get_channel_id() -> Optional[str]:
 def get_today_utc4() -> str:
     return datetime.now(TZ).strftime("%Y-%m-%d")
 
-def parse_event_time(event: dict):
+def espn_date(date_str: str) -> str:
+    """Convierte YYYY-MM-DD a YYYYMMDD para la API de ESPN."""
+    return date_str.replace("-", "")
+
+def parse_event_time(utc_str: str):
+    """Convierte timestamp UTC de ESPN a hora local UTC-4."""
     try:
-        timestamp = event.get("strTimestamp") or ""
-        if timestamp:
-            dt_utc = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
-            dt_local = dt_utc.astimezone(TZ)
-            return dt_local.strftime("%H:%M"), dt_local
-        date_str = event.get("dateEvent") or ""
-        time_str = (event.get("strTime") or "")[:5]
-        if date_str and time_str:
-            dt_utc = datetime.fromisoformat(f"{date_str}T{time_str}:00+00:00")
-            dt_local = dt_utc.astimezone(TZ)
-            return dt_local.strftime("%H:%M"), dt_local
+        dt_utc = datetime.fromisoformat(utc_str.replace("Z", "+00:00"))
+        dt_local = dt_utc.astimezone(TZ)
+        return dt_local.strftime("%H:%M"), dt_local
     except Exception:
-        pass
-    return "--:--", None
+        return "--:--", None
 
-def event_local_date(event: dict) -> Optional[str]:
-    _, dt_local = parse_event_time(event)
-    return dt_local.strftime("%Y-%m-%d") if dt_local else None
+# ─── API ESPN ──────────────────────────────────────────────────────────────────
 
-# ─── API helpers ───────────────────────────────────────────────────────────────
-
-def fetch_events_for_utc_date(utc_date: str) -> list:
+def fetch_league(slug: str, date_str: str) -> list:
+    """Consulta ESPN para una liga y fecha. Devuelve lista de eventos."""
     try:
         resp = requests.get(
-            f"{TSDB_BASE}/eventsday.php",
-            params={"d": utc_date, "s": "Soccer"},
-            timeout=15,
+            f"{ESPN_BASE}/{slug}/scoreboard",
+            params={"dates": espn_date(date_str), "limit": 100},
+            headers={"User-Agent": "Mozilla/5.0"},
+            timeout=10,
         )
-        return resp.json().get("events") or []
+        if resp.status_code != 200:
+            return []
+        return resp.json().get("events", [])
     except Exception as e:
-        logger.error(f"Error consultando TheSportsDB ({utc_date}): {e}")
+        logger.error(f"Error fetching ESPN {slug}: {e}")
         return []
 
 def fetch_matches_for_date(local_date: str) -> dict:
-    dt_local = datetime.strptime(local_date, "%Y-%m-%d")
-    utc_next = (dt_local + timedelta(days=1)).strftime("%Y-%m-%d")
-
-    events_same = fetch_events_for_utc_date(local_date)
-    events_next = fetch_events_for_utc_date(utc_next)
-
+    """
+    Consulta todas las ligas para la fecha local dada (UTC-4).
+    Filtra cada evento por su fecha local real para manejar diferencias de zona horaria.
+    """
     all_matches: dict = {}
 
-    def add_event(event):
-        league_id = str(event.get("idLeague", ""))
-        if league_id not in LEAGUES:
-            return
-        if event_local_date(event) != local_date:
-            return
-        flag, name = LEAGUES[league_id]
-        round_raw = event.get("intRound") or event.get("strRound") or ""
-        round_name = f"Jornada {round_raw}" if str(round_raw).isdigit() else str(round_raw)
-        if league_id not in all_matches:
-            all_matches[league_id] = (flag, name, round_name, [])
-        existing_ids = {e.get("idEvent") for e in all_matches[league_id][3]}
-        if event.get("idEvent") not in existing_ids:
-            all_matches[league_id][3].append(event)
+    for slug, (flag, name) in LEAGUES.items():
+        events = fetch_league(slug, local_date)
 
-    for event in events_same:
-        add_event(event)
-    for event in events_next:
-        if str(event.get("idLeague", "")) in LATE_NIGHT_LEAGUES:
-            add_event(event)
+        for event in events:
+            # Fecha/hora del evento
+            utc_str = event.get("date", "")
+            time_str, dt_local = parse_event_time(utc_str)
+
+            # Verificar que el partido sea en la fecha local correcta
+            if dt_local and dt_local.strftime("%Y-%m-%d") != local_date:
+                continue
+
+            # Round/jornada
+            season_type = event.get("season", {}).get("type", {})
+            round_raw = (
+                event.get("week", {}).get("number")
+                or season_type.get("name", "")
+            )
+            competitions = event.get("competitions", [{}])
+            comp = competitions[0] if competitions else {}
+            round_name = comp.get("notes", [{}])
+            if round_name and isinstance(round_name, list):
+                round_name = round_name[0].get("headline", "") or ""
+            elif not isinstance(round_name, str):
+                round_name = str(round_raw) if round_raw else ""
+
+            # Equipos
+            competitors = comp.get("competitors", [])
+            home = next((c.get("team", {}).get("displayName", "?") for c in competitors if c.get("homeAway") == "home"), "?")
+            away = next((c.get("team", {}).get("displayName", "?") for c in competitors if c.get("homeAway") == "away"), "?")
+
+            if slug not in all_matches:
+                all_matches[slug] = (flag, name, round_name, [])
+
+            all_matches[slug][3].append({
+                "home": home,
+                "away": away,
+                "time_str": time_str,
+                "dt_local": dt_local,
+            })
 
     return all_matches
 
 def fetch_matches() -> dict:
     return fetch_matches_for_date(get_today_utc4())
 
-# ─── /debugids ─────────────────────────────────────────────────────────────────
-
-async def debugids_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    await update.message.reply_text("⏳ Verificando IDs en TheSportsDB, espera...")
-
-    id_to_name = {lid: name for lid, (_, name) in LEAGUES.items()}
-
-    lines = ["🔍 <b>Verificación de IDs — TheSportsDB</b>\n"]
-    ok = 0
-    wrong = 0
-
-    # Países a consultar y sus ligas (endpoint: search_all_leagues.php?c=COUNTRY&s=Soccer)
-    countries = ["Germany", "Spain", "France", "England", "Italy", "Europe", "International"]
-
-    # Recopilar todas las ligas de todos los países en un solo dict id→data
-    all_remote: dict = {}
-    for country in countries:
-        try:
-            resp = requests.get(
-                f"{TSDB_BASE}/search_all_leagues.php",
-                params={"c": country, "s": "Soccer"},
-                timeout=10,
-            )
-            leagues = resp.json().get("countrys") or []
-            for lg in leagues:
-                lid = str(lg.get("idLeague", ""))
-                if lid:
-                    all_remote[lid] = lg
-        except Exception as e:
-            lines.append(f"⚠️ Error consultando {country}: {e}")
-
-    # Verificar cada ID que tenemos
-    for our_id, (flag, our_name) in LEAGUES.items():
-        if our_id in all_remote:
-            real_name = all_remote[our_id].get("strLeague", "?")
-            lines.append(f"✅ <code>{our_id}</code> <b>{real_name}</b> — correcto")
-            ok += 1
-        else:
-            # Intentar lookup directo por ID para confirmar si existe
-            try:
-                resp2 = requests.get(
-                    f"{TSDB_BASE}/lookupleague.php",
-                    params={"id": our_id},
-                    timeout=10,
-                )
-                data = resp2.json().get("leagues") or []
-                if data:
-                    real_name = data[0].get("strLeague", "?")
-                    lines.append(f"✅ <code>{our_id}</code> <b>{real_name}</b> — correcto (lookup)")
-                    ok += 1
-                else:
-                    lines.append(f"❌ <code>{our_id}</code> <b>{our_name}</b> — ID NO encontrado")
-                    wrong += 1
-            except Exception as e:
-                lines.append(f"⚠️ <code>{our_id}</code> <b>{our_name}</b> — error lookup: {e}")
-                wrong += 1
-
-    lines.append(f"\n📊 <b>{ok} correctos · {wrong} con problema</b>")
-
-    full = "\n".join(lines)
-    for i in range(0, len(full), 4000):
-        await update.message.reply_text(full[i:i+4000], parse_mode="HTML")
-
 # ─── Formatter ─────────────────────────────────────────────────────────────────
-
-# --- /debug ---
-
-async def debug_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    date = context.args[0] if context.args else get_today_utc4()
-    await update.message.reply_text(f"Consultando eventos del {date}...")
-
-    events_same = fetch_events_for_utc_date(date)
-    dt = datetime.strptime(date, "%Y-%m-%d")
-    events_next = fetch_events_for_utc_date((dt + timedelta(days=1)).strftime("%Y-%m-%d"))
-
-    seen: dict = {}
-    for ev in events_same + events_next:
-        lid = str(ev.get("idLeague", ""))
-        lname = ev.get("strLeague", "?")
-        if lid not in seen:
-            seen[lid] = {"name": lname, "count": 0}
-        seen[lid]["count"] += 1
-
-    lines = [f"Ligas en TheSportsDB — {date}\n"]
-    for lid, info in sorted(seen.items(), key=lambda x: x[1]["name"]):
-        in_bot = "EN BOT" if lid in LEAGUES else "NO en bot"
-        lines.append(f"{in_bot} | {lid} | {info['name']} ({info['count']})")
-
-    lines.append(f"\nTotal: {len(seen)} ligas")
-    full = "\n".join(lines)
-    for i in range(0, len(full), 4000):
-        await update.message.reply_text(full[i:i+4000])
-
 
 def format_message(all_matches: dict) -> str:
     header = "<b>🍿 ¡PARTIDOS DE HOY! ⚽️</b>"
@@ -270,16 +182,15 @@ def format_message(all_matches: dict) -> str:
         return header + "\n\n" + "No hay partidos hoy en las ligas seleccionadas." + "\n\n" + footer
 
     lines = [header]
-    for league_id, (flag, name, round_name, events) in all_matches.items():
-        def sort_key(e):
-            _, dt = parse_event_time(e)
-            return dt if dt else datetime.max.replace(tzinfo=TZ)
 
-        events_sorted = sorted(events, key=sort_key)
+    for slug, (flag, name, round_name, matches) in all_matches.items():
+        # Ordenar por hora
+        matches_sorted = sorted(matches, key=lambda m: m["dt_local"] or datetime.max.replace(tzinfo=TZ))
+
+        # Agrupar por hora
         groups: dict = {}
-        for event in events_sorted:
-            time_str, _ = parse_event_time(event)
-            groups.setdefault(time_str, []).append(event)
+        for match in matches_sorted:
+            groups.setdefault(match["time_str"], []).append(match)
 
         league_header = f"<b>{flag} | {name}"
         if round_name:
@@ -292,10 +203,8 @@ def format_message(all_matches: dict) -> str:
 
         time_slots = list(groups.keys())
         for i, time_str in enumerate(time_slots):
-            for event in groups[time_str]:
-                home = event.get("strHomeTeam", "?")
-                away = event.get("strAwayTeam", "?")
-                lines.append(f"{home} - {away} {time_str}")
+            for match in groups[time_str]:
+                lines.append(f"{match['home']} - {match['away']} {time_str}")
             if i < len(time_slots) - 1:
                 lines.append("")
 
@@ -332,7 +241,7 @@ async def send_daily_matches(bot) -> None:
     except Exception as e:
         logger.error(f"Error al enviar mensaje: {e}")
 
-# ─── Comandos ─────────────────────────────────────────────────────────────────
+# ─── /start ────────────────────────────────────────────────────────────────────
 
 async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     name = update.effective_user.first_name or "crack"
@@ -349,6 +258,8 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
         parse_mode="HTML",
     )
 
+# ─── /test ─────────────────────────────────────────────────────────────────────
+
 async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     channel_id = get_channel_id()
     if not channel_id:
@@ -362,6 +273,8 @@ async def test_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> No
         await update.message.reply_text(f"✅ Enviado a <code>{channel_id}</code>.", parse_mode="HTML")
     except Exception as e:
         await update.message.reply_text(f"❌ Error: <code>{e}</code>", parse_mode="HTML")
+
+# ─── /testfecha ────────────────────────────────────────────────────────────────
 
 async def testfecha_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     channel_id = get_channel_id()
@@ -453,8 +366,6 @@ def main() -> None:
     application.add_handler(CommandHandler("start", start_command))
     application.add_handler(CommandHandler("test", test_command))
     application.add_handler(CommandHandler("testfecha", testfecha_command))
-    application.add_handler(CommandHandler("debugids", debugids_command))
-    application.add_handler(CommandHandler("debug", debug_command))
     application.add_handler(gfa_handler)
 
     logger.info("Bot iniciado...")
