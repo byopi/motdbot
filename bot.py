@@ -233,6 +233,35 @@ async def debugids_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -
 
 # ─── Formatter ─────────────────────────────────────────────────────────────────
 
+# --- /debug ---
+
+async def debug_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    date = context.args[0] if context.args else get_today_utc4()
+    await update.message.reply_text(f"Consultando eventos del {date}...")
+
+    events_same = fetch_events_for_utc_date(date)
+    dt = datetime.strptime(date, "%Y-%m-%d")
+    events_next = fetch_events_for_utc_date((dt + timedelta(days=1)).strftime("%Y-%m-%d"))
+
+    seen: dict = {}
+    for ev in events_same + events_next:
+        lid = str(ev.get("idLeague", ""))
+        lname = ev.get("strLeague", "?")
+        if lid not in seen:
+            seen[lid] = {"name": lname, "count": 0}
+        seen[lid]["count"] += 1
+
+    lines = [f"Ligas en TheSportsDB — {date}\n"]
+    for lid, info in sorted(seen.items(), key=lambda x: x[1]["name"]):
+        in_bot = "EN BOT" if lid in LEAGUES else "NO en bot"
+        lines.append(f"{in_bot} | {lid} | {info['name']} ({info['count']})")
+
+    lines.append(f"\nTotal: {len(seen)} ligas")
+    full = "\n".join(lines)
+    for i in range(0, len(full), 4000):
+        await update.message.reply_text(full[i:i+4000])
+
+
 def format_message(all_matches: dict) -> str:
     header = "<b>🍿 ¡PARTIDOS DE HOY! ⚽️</b>"
     footer = "<i>⚽️ Suscríbete en t.me/iUniversoFootball</i>"
@@ -425,6 +454,7 @@ def main() -> None:
     application.add_handler(CommandHandler("test", test_command))
     application.add_handler(CommandHandler("testfecha", testfecha_command))
     application.add_handler(CommandHandler("debugids", debugids_command))
+    application.add_handler(CommandHandler("debug", debug_command))
     application.add_handler(gfa_handler)
 
     logger.info("Bot iniciado...")
