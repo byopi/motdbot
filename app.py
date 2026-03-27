@@ -20,17 +20,20 @@ def health():
 def ping():
     return "pong", 200
 
-def start_bot():
-    # Crear un event loop propio para este hilo
+def start_flask():
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
+
+if __name__ == "__main__":
+    # Flask en hilo daemon — responde al healthcheck de Render
+    flask_thread = threading.Thread(target=start_flask, daemon=True)
+    flask_thread.start()
+
+    # Pequeña pausa para que Flask levante el puerto antes de que Render lo verifique
+    import time
+    time.sleep(2)
+
+    # Bot en hilo principal con su propio event loop
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
     run_bot()
-
-if __name__ == "__main__":
-    # El bot corre en un hilo aparte con su propio event loop
-    bot_thread = threading.Thread(target=start_bot, daemon=True)
-    bot_thread.start()
-
-    # Flask en el hilo principal — Render detecta el puerto de inmediato
-    port = int(os.environ.get("PORT", 10000))
-    app.run(host="0.0.0.0", port=port)
