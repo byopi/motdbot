@@ -40,30 +40,65 @@ GFA_PASSWORD = "gfa1234"
 ESPN_BASE = "https://site.api.espn.com/apis/site/v2/sports/soccer"
 
 LEAGUES = {
-    "ger.1":                  ("🇩🇪", "Bundesliga"),
-    "ger.dfb_pokal":          ("🇩🇪", "DFB-Pokal"),
-    "esp.1":                  ("🇪🇸", "LaLiga EA Sports"),
-    "esp.copa_del_rey":       ("🇪🇸", "Copa del Rey"),
-    "esp.super_cup":          ("🇪🇸", "Supercopa de España"),
-    "fra.1":                  ("🇫🇷", "Ligue 1"),
-    "fra.coupe_de_france":    ("🇫🇷", "Copa de Francia"),
-    "eng.1":                  ("🇬🇧", "Premier League"),
-    "eng.fa":                 ("🇬🇧", "FA Cup"),
-    "eng.league_cup":         ("🇬🇧", "EFL Cup"),
-    "eng.community_shield":   ("🇬🇧", "Community Shield"),
-    "ita.1":                  ("🇮🇹", "Serie A"),
-    "ita.coppa_italia":       ("🇮🇹", "Copa Italia"),
-    "uefa.champions":         ("🌍", "Champions League"),
-    "uefa.europa":            ("🌍", "Europa League"),
-    "uefa.europa.conf":       ("🌍", "Conference League"),
-    "uefa.nations":           ("🌍", "Nations League"),
-    "fifa.world":             ("🌍", "Mundial FIFA"),
-    "uefa.euro":              ("🇪🇺", "Eurocopa"),
-    "conmebol.america":       ("🌎", "Copa América"),
-    "caf.nations":            ("🌍", "Copa Africana de Naciones"),
-    "conmebol.libertadores":  ("🌎", "CONMEBOL Libertadores"),
-    "conmebol.sudamericana":  ("🌎", "CONMEBOL Sudamericana"),
-    "conmebol.recopa":        ("🌎", "Recopa Sudamericana"),
+    # Alemania
+    "ger.1":                      ("🇩🇪", "Bundesliga"),
+    "ger.dfb_pokal":              ("🇩🇪", "DFB-Pokal"),
+    # España
+    "esp.1":                      ("🇪🇸", "LaLiga EA Sports"),
+    "esp.copa_del_rey":           ("🇪🇸", "Copa del Rey"),
+    "esp.super_cup":              ("🇪🇸", "Supercopa de España"),
+    # Francia
+    "fra.1":                      ("🇫🇷", "Ligue 1"),
+    "fra.coupe_de_france":        ("🇫🇷", "Copa de Francia"),
+    # Inglaterra
+    "eng.1":                      ("🇬🇧", "Premier League"),
+    "eng.fa":                     ("🇬🇧", "FA Cup"),
+    "eng.league_cup":             ("🇬🇧", "EFL Cup"),
+    "eng.community_shield":       ("🇬🇧", "Community Shield"),
+    # Italia
+    "ita.1":                      ("🇮🇹", "Serie A"),
+    "ita.coppa_italia":           ("🇮🇹", "Copa Italia"),
+    # Europa UEFA
+    "uefa.champions":             ("🌍", "Champions League"),
+    "uefa.europa":                ("🌍", "Europa League"),
+    "uefa.europa.conf":           ("🌍", "Conference League"),
+    "uefa.nations":               ("🌍", "Nations League"),
+    # Clasificatorias europeas Mundial 2026
+    "fifa.worldq.uefa":           ("🇪🇺", "Eliminatorias UEFA"),
+    # Repescas
+    "fifa.worldq.intercontinental": ("🌍", "Repesca Intercontinental"),
+    # Selecciones / Internacional
+    "fifa.friendly":              ("🌍", "Amistosos Internacionales"),
+    "international.friendly":     ("🌍", "Amistosos Internacionales"),
+    "fifa.world":                 ("🌍", "Mundial FIFA"),
+    "uefa.euro":                  ("🇪🇺", "Eurocopa"),
+    "conmebol.america":           ("🌎", "Copa América"),
+    "caf.nations":                ("🌍", "Copa Africana de Naciones"),
+    # FIFA Series
+    "fifa.series":                ("🌍", "FIFA Series"),
+    "fifa.series.men":            ("🌍", "FIFA Series"),
+    # Eliminatorias CONMEBOL (Venezuela juega aquí)
+    "fifa.worldq.conmebol":       ("🌎", "Eliminatorias CONMEBOL"),
+    "conmebol.qualifying":        ("🌎", "Eliminatorias CONMEBOL"),
+    # Eliminatorias UEFA + Repesca europea
+    "fifa.worldq.uefa":           ("🇪🇺", "Eliminatorias UEFA"),
+    "uefa.qualifying":            ("🇪🇺", "Repesca Europea"),
+    # Eliminatorias CONCACAF
+    "fifa.worldq.concacaf":       ("🌎", "Eliminatorias CONCACAF"),
+    "concacaf.qualifying":        ("🌎", "Eliminatorias CONCACAF"),
+    # Eliminatorias AFC
+    "fifa.worldq.afc":            ("🌏", "Eliminatorias AFC"),
+    # Eliminatorias CAF
+    "fifa.worldq.caf":            ("🌍", "Eliminatorias CAF"),
+    # Repescas intercontinentales
+    "fifa.worldq.intercontinental": ("🌍", "Repesca Intercontinental"),
+    "fifa.worldq.afc.conmebol":   ("🌍", "Repesca AFC/CONMEBOL"),
+    # CONMEBOL
+    "conmebol.libertadores":      ("🌎", "CONMEBOL Libertadores"),
+    "conmebol.sudamericana":      ("🌎", "CONMEBOL Sudamericana"),
+    "conmebol.recopa":            ("🌎", "Recopa Sudamericana"),
+    # FIFA Intercontinental Cup
+    "fifa.intercontinental":      ("🌍", "FIFA Intercontinental Cup"),
 }
 
 # ─── Config helpers ────────────────────────────────────────────────────────────

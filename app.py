@@ -1,4 +1,5 @@
 import os
+import asyncio
 import threading
 import logging
 from flask import Flask
@@ -20,13 +21,16 @@ def ping():
     return "pong", 200
 
 def start_bot():
+    # Crear un event loop propio para este hilo
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
     run_bot()
 
 if __name__ == "__main__":
-    # El bot corre en un hilo aparte
+    # El bot corre en un hilo aparte con su propio event loop
     bot_thread = threading.Thread(target=start_bot, daemon=True)
     bot_thread.start()
 
-    # Flask en el hilo principal — Render lo detecta de inmediato, sin Timed Out
+    # Flask en el hilo principal — Render detecta el puerto de inmediato
     port = int(os.environ.get("PORT", 10000))
     app.run(host="0.0.0.0", port=port)
