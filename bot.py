@@ -15,6 +15,7 @@ from telegram.ext import (
     filters,
 )
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from keep_alive import keep_alive
 
 logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -486,6 +487,9 @@ def main() -> None:
 
     logger.info("Bot iniciado...")
     application.run_polling(drop_pending_updates=True)
+    
+    keep_alive() # IMPORTANTE: Llamar antes de bot.polling()
+    bot.polling(none_stop=True)
 
 if __name__ == "__main__":
     main()
